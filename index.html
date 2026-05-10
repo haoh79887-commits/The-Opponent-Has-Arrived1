@@ -1,0 +1,2889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对手来了 · 把每条视频变成你的训练场</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@900&family=Noto+Sans+SC:wght@300;400;500;700;900&family=JetBrains+Mono:wght@400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #06060a;
+    --bg-2: #0e0e14;
+    --bg-3: #15151e;
+    --ink: #f5f5f7;
+    --ink-dim: #8a8a92;
+    --ink-faint: #50505a;
+    --enemy: #ff2e3f;
+    --enemy-soft: #ff2e3f30;
+    --enemy-glow: #ff2e3f60;
+    --player: #00e5ff;
+    --player-soft: #00e5ff30;
+    --player-glow: #00e5ff60;
+    --warning: #ffd60a;
+    --warning-glow: #ffd60a60;
+    --grid: #ffffff06;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ========= 全局背景效果 ========= */
+  .bg-decor {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .bg-grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  }
+  .bg-glow {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 15% 25%, var(--enemy-glow), transparent 40%),
+      radial-gradient(circle at 85% 75%, var(--player-glow), transparent 40%),
+      radial-gradient(circle at 50% 100%, var(--warning-glow), transparent 30%);
+    opacity: 0.18;
+  }
+  .bg-noise {
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.03;
+    mix-blend-mode: overlay;
+  }
+  .bg-scanline {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent 0, transparent 3px, rgba(255,255,255,0.015) 3px, rgba(255,255,255,0.015) 4px);
+    pointer-events: none;
+  }
+
+  /* 飘动的像素装饰 */
+  .floating-pixel {
+    position: fixed;
+    width: 24px; height: 24px;
+    opacity: 0.18;
+    z-index: 2;
+    pointer-events: none;
+    image-rendering: pixelated;
+    animation: floatY 8s ease-in-out infinite;
+  }
+  .floating-pixel.fp1 { top: 18%; left: 8%; animation-delay: 0s; }
+  .floating-pixel.fp2 { top: 30%; right: 10%; animation-delay: -2s; }
+  .floating-pixel.fp3 { bottom: 22%; left: 12%; animation-delay: -4s; }
+  .floating-pixel.fp4 { bottom: 30%; right: 6%; animation-delay: -6s; }
+  @keyframes floatY {
+    0%,100% { transform: translateY(0) rotate(0); }
+    50% { transform: translateY(-20px) rotate(180deg); }
+  }
+
+  /* ========= Screens ========= */
+  .screen {
+    position: fixed; inset: 0;
+    display: none;
+    flex-direction: column;
+    z-index: 10;
+    animation: screenIn 0.6s cubic-bezier(.2, .9, .3, 1);
+  }
+  .screen.active { display: flex; }
+  @keyframes screenIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ========= 通用按钮 ========= */
+  .btn {
+    background: var(--ink);
+    color: var(--bg);
+    border: none;
+    padding: 0.85rem 1.85rem;
+    font-family: "Noto Sans SC", sans-serif;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.25s cubic-bezier(.2, .9, .3, 1);
+    position: relative;
+    overflow: hidden;
+  }
+  .btn:hover { background: var(--enemy); color: var(--ink); transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .btn.primary {
+    background: var(--enemy);
+    color: var(--ink);
+    padding: 1.1rem 3.2rem;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    position: relative;
+  }
+  .btn.primary::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+    transform: translateX(-100%);
+    transition: transform 0.6s;
+  }
+  .btn.primary:hover::after { transform: translateX(100%); }
+  .btn.primary:hover {
+    background: var(--ink);
+    color: var(--enemy);
+    box-shadow: 0 0 40px var(--enemy-glow), 0 0 80px var(--enemy-soft);
+    transform: translateY(-2px);
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid #ffffff20;
+  }
+  .btn.ghost:hover { border-color: var(--ink); background: transparent; color: var(--ink); }
+
+  /* =========================================
+     首页 (合并文字稿输入)
+  ========================================= */
+  #screen-home {
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+  #screen-home.active { display: flex; }
+
+  .home-container {
+    width: 100%;
+    max-width: 760px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .brand-row {
+    display: flex; align-items: center; gap: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+  .brand-mark {
+    width: 36px; height: 36px;
+    background-image: url('data:image/png;base64,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');
+    background-size: 396px 36px;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    animation: brandIdle 1.5s steps(11) infinite;
+    transform: scaleX(-1);
+    filter: drop-shadow(0 0 6px var(--enemy-glow));
+  }
+  @keyframes brandIdle {
+    from { background-position: 0 0; }
+    to { background-position: -396px 0; }
+  }
+  .brand-text {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem; letter-spacing: 0.4em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+  .brand-text strong { color: var(--enemy); }
+
+  .home-title {
+    font-family: "Noto Serif SC", serif;
+    font-weight: 900;
+    font-size: clamp(3rem, 9vw, 6rem);
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+    text-align: center;
+    position: relative;
+    margin-bottom: 0.5rem;
+  }
+  .home-title .word {
+    display: inline-block;
+    background: linear-gradient(180deg, var(--ink) 55%, var(--enemy));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    position: relative;
+  }
+  .home-title .word::before {
+    content: attr(data-text);
+    position: absolute; inset: 0;
+    color: var(--enemy);
+    mix-blend-mode: screen;
+    opacity: 0.3;
+    transform: translate(2px, -1px);
+    pointer-events: none;
+    -webkit-text-fill-color: var(--enemy);
+  }
+
+  .home-pitch {
+    text-align: center;
+    color: var(--ink-dim);
+    font-size: 1rem;
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
+    max-width: 36rem;
+  }
+  .home-pitch strong { color: var(--ink); font-weight: 500; }
+  .home-pitch .neo {
+    color: var(--enemy);
+    font-weight: 500;
+    text-shadow: 0 0 12px var(--enemy-glow);
+  }
+
+  /* 文字稿输入卡片 */
+  .input-card {
+    width: 100%;
+    background: linear-gradient(180deg, var(--bg-2), var(--bg-3));
+    border: 1px solid #ffffff10;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .input-card::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--enemy), var(--player), transparent);
+    background-size: 200% 100%;
+    animation: borderFlow 3s linear infinite;
+  }
+  @keyframes borderFlow {
+    from { background-position: 0% 0; }
+    to { background-position: 200% 0; }
+  }
+  .input-card::after {
+    content: ''; position: absolute;
+    top: -1px; left: -1px; width: 18px; height: 18px;
+    border-top: 2px solid var(--enemy);
+    border-left: 2px solid var(--enemy);
+  }
+
+  .input-label {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 0.6rem;
+  }
+  .input-label-l {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: var(--enemy);
+  }
+  .input-label-l::before { content: '◆ '; }
+  .input-label-r {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+  }
+
+  #script-input {
+    width: 100%;
+    min-height: 8rem;
+    background: transparent;
+    border: none;
+    color: var(--ink);
+    padding: 0.5rem 0.25rem;
+    font-family: "Noto Sans SC", sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    resize: none;
+  }
+  #script-input:focus { outline: none; }
+  #script-input::placeholder { color: var(--ink-faint); }
+
+  .examples-row {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed #ffffff10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .examples-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    margin-right: 0.2rem;
+  }
+  .example-tag {
+    background: transparent;
+    border: 1px solid #ffffff14;
+    color: var(--ink-dim);
+    padding: 0.4rem 0.85rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: "Noto Sans SC", sans-serif;
+    transition: all 0.2s;
+  }
+  .example-tag::before { content: '#'; margin-right: 0.25em; color: var(--enemy); transition: color 0.2s; }
+  .example-tag:hover {
+    border-color: var(--enemy);
+    color: var(--ink);
+    background: var(--enemy-soft);
+  }
+  .example-tag:hover::before { color: var(--ink); }
+
+  .home-cta-row {
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+  }
+  .home-hint {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+  }
+  .home-hint kbd {
+    background: var(--bg-3);
+    border: 1px solid #ffffff15;
+    padding: 0.15rem 0.4rem;
+    font-family: inherit;
+    font-size: 0.7rem;
+    color: var(--ink-dim);
+  }
+
+  .home-footer {
+    margin-top: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.65rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.2em;
+  }
+  .home-footer-line {
+    width: 24px; height: 1px;
+    background: var(--ink-faint);
+  }
+
+  /* =========================================
+     AI 解析中页
+  ========================================= */
+  #screen-extract { align-items: center; justify-content: center; padding: 2rem; }
+  .extract-box { text-align: center; position: relative; }
+
+  .extract-frame {
+    width: 220px; height: 220px;
+    margin: 0 auto 2rem;
+    position: relative;
+  }
+  .extract-frame::before, .extract-frame::after {
+    content: ''; position: absolute;
+    width: 28px; height: 28px;
+  }
+  .extract-frame::before {
+    top: 0; left: 0;
+    border-top: 2px solid var(--enemy);
+    border-left: 2px solid var(--enemy);
+  }
+  .extract-frame::after {
+    bottom: 0; right: 0;
+    border-bottom: 2px solid var(--enemy);
+    border-right: 2px solid var(--enemy);
+  }
+  .extract-corner-tr, .extract-corner-bl {
+    position: absolute;
+    width: 28px; height: 28px;
+  }
+  .extract-corner-tr { top: 0; right: 0; border-top: 2px solid var(--player); border-right: 2px solid var(--player); }
+  .extract-corner-bl { bottom: 0; left: 0; border-bottom: 2px solid var(--player); border-left: 2px solid var(--player); }
+
+  .extract-inner {
+    position: absolute;
+    inset: 16px;
+    overflow: hidden;
+    background: var(--bg-2);
+  }
+  .extract-scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--enemy), transparent);
+    box-shadow: 0 0 8px var(--enemy);
+    animation: scanMove 1.6s linear infinite;
+  }
+  @keyframes scanMove {
+    0% { top: 0; }
+    100% { top: 100%; }
+  }
+  .extract-matrix {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    opacity: 0.6;
+  }
+  .matrix-col {
+    position: absolute;
+    top: -100%;
+    width: 12px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    color: var(--enemy);
+    line-height: 1;
+    text-align: center;
+    animation: matrixFall 4s linear infinite;
+    white-space: pre;
+  }
+  @keyframes matrixFall {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(300%); }
+  }
+
+  .extract-status {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--enemy);
+    letter-spacing: 0.25em;
+    margin-bottom: 0.5rem;
+  }
+  .extract-step {
+    font-size: 0.9rem;
+    color: var(--ink-dim);
+    min-height: 1.5em;
+  }
+
+  /* =========================================
+     对手登场页
+  ========================================= */
+  #screen-reveal { align-items: center; justify-content: center; padding: 2rem; overflow-y: auto; }
+  .reveal-wrap {
+    text-align: center;
+    max-width: 38rem;
+    width: 100%;
+  }
+  .reveal-tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--enemy);
+    letter-spacing: 0.35em;
+    margin-bottom: 1.5rem;
+    animation: tagBlink 1.5s infinite;
+  }
+  @keyframes tagBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .reveal-boss-wrap {
+    position: relative;
+    width: 144px; height: 144px;
+    margin: 0 auto 1rem;
+  }
+  .reveal-boss-wrap::before {
+    content: ''; position: absolute;
+    inset: -20px;
+    border: 1px solid var(--enemy-soft);
+    border-radius: 50%;
+    animation: bossRing 3s linear infinite;
+  }
+  .reveal-boss-wrap::after {
+    content: ''; position: absolute;
+    inset: -40px;
+    border: 1px dashed var(--enemy-glow);
+    border-radius: 50%;
+    animation: bossRing 4s linear infinite reverse;
+    opacity: 0.5;
+  }
+  @keyframes bossRing {
+    from { transform: rotate(0); }
+    to { transform: rotate(360deg); }
+  }
+  .reveal-boss {
+    width: 144px; height: 144px;
+    background-image: url('data:image/png;base64,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');
+    background-size: 1584px 144px;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    animation: bossIdleL 1.5s steps(11) infinite;
+    filter: drop-shadow(0 0 24px var(--enemy-glow));
+  }
+  @keyframes bossIdleL {
+    from { background-position: 0 0; }
+    to { background-position: -1584px 0; }
+  }
+
+  .reveal-name {
+    font-family: "Noto Serif SC", serif;
+    font-weight: 900;
+    font-size: 2.6rem;
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.02em;
+  }
+  .reveal-title {
+    color: var(--enemy);
+    font-size: 0.95rem;
+    letter-spacing: 0.15em;
+    margin-bottom: 1.5rem;
+    font-family: "JetBrains Mono", monospace;
+  }
+  .reveal-desc {
+    color: var(--ink);
+    line-height: 1.85;
+    margin-bottom: 1.75rem;
+    padding: 1.1rem 1.3rem;
+    background: linear-gradient(180deg, var(--bg-2), transparent);
+    border-left: 3px solid var(--enemy);
+    text-align: left;
+    font-size: 0.95rem;
+    position: relative;
+  }
+  .reveal-desc::before {
+    content: '"';
+    position: absolute;
+    left: 0.5rem; top: -0.5rem;
+    font-family: "Noto Serif SC", serif;
+    font-size: 3rem;
+    color: var(--enemy);
+    opacity: 0.5;
+    line-height: 1;
+  }
+
+  .reveal-walls-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--ink-dim);
+    letter-spacing: 0.2em;
+    margin-bottom: 0.75rem;
+  }
+  .reveal-walls {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: 2rem;
+  }
+  .wall-dot {
+    width: 2.4rem; height: 2.4rem;
+    background: var(--bg-2);
+    border: 1px solid #ffffff15;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--ink-dim);
+    font-weight: 700;
+    position: relative;
+  }
+  .wall-dot:nth-child(5) {
+    border-color: var(--enemy);
+    color: var(--enemy);
+  }
+  .wall-dot:nth-child(5)::after {
+    content: 'BOSS';
+    position: absolute;
+    top: 100%; left: 50%;
+    transform: translateX(-50%);
+    margin-top: 4px;
+    font-size: 0.55rem;
+    letter-spacing: 0.15em;
+    color: var(--enemy);
+  }
+
+  /* =========================================
+     闯关游戏页 (核心!)
+  ========================================= */
+  #screen-game {
+    background: #0a0814;
+  }
+
+  .game-hud {
+    padding: 0.85rem 1.4rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(180deg, var(--bg), transparent);
+    border-bottom: 1px solid #ffffff08;
+    position: relative;
+    z-index: 5;
+  }
+  .hud-left { display: flex; align-items: center; gap: 1.2rem; }
+  .hud-stage {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--ink-dim);
+  }
+  .hud-stage strong { color: var(--enemy); font-weight: 400; }
+  .hud-progress { display: flex; gap: 0.3rem; }
+  .progress-dot {
+    width: 0.9rem; height: 0.4rem;
+    background: #ffffff10;
+    transition: all 0.3s;
+  }
+  .progress-dot.done { background: var(--player); box-shadow: 0 0 6px var(--player-glow); }
+  .progress-dot.fail { background: var(--enemy); box-shadow: 0 0 6px var(--enemy-glow); }
+  .progress-dot.current {
+    background: var(--warning);
+    box-shadow: 0 0 8px var(--warning-glow);
+    animation: pulse 1s infinite;
+    width: 1.5rem;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .hud-round {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--warning);
+    letter-spacing: 0.15em;
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+  .hud-round .num {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 0 0.25rem;
+  }
+
+  .music-btn {
+    appearance: none;
+    border: 1px solid #ffffff1a;
+    background: #ffffff08;
+    color: var(--ink);
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    line-height: 1;
+    transition: transform 0.05s, background 0.2s, border-color 0.2s;
+  }
+  .music-btn:hover {
+    border-color: #ffffff30;
+    background: #ffffff12;
+  }
+  .music-btn:active { transform: translateY(1px); }
+  .hud-timer {
+    font-size: 0.7rem;
+    color: var(--enemy);
+    letter-spacing: 0.15em;
+    opacity: 0.95;
+  }
+
+  /* 游戏舞台 */
+  .game-stage {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAALNJREFUeJzt2bENg1AUxdAfhEjJ/psgsQSrUCYNjHGQsBe4lvW699m34xqQ//mT82Oi6w+gAFpAUwAtoCmAFtAUQAtoCqAFNAXQApoCaAFNAbSApgBaQFMALaApgBbQFEALaAqgBTQF0AKaAmgBzaz/88v6pfuvv4ACaAFNAbSApgBaQFMALaApgBbQFEALaAqgBTQF0AKaAmgBTQG0gKYAWkBTAC2gKYAW0BRAC2gKoAU0N4NICaitrv6zAAAAAElFTkSuQmCC');
+    background-size: 128px 128px;
+    background-repeat: repeat;
+    image-rendering: pixelated;
+    min-height: 280px;
+    animation: bgScroll 14s linear infinite;
+  }
+  .game-stage.paused { animation-play-state: paused; }
+  @keyframes bgScroll {
+    from { background-position: 0 0; }
+    to { background-position: -512px 0; }
+  }
+
+  /* 暗罩 + 渐变 */
+  .game-stage::before {
+    content: ''; position: absolute; inset: 0;
+    background:
+      linear-gradient(180deg, rgba(10,8,20,0.6), rgba(10,8,20,0.15) 25%, rgba(10,8,20,0.4) 70%, rgba(10,8,20,0.85)),
+      linear-gradient(90deg, rgba(255,46,63,0.05), transparent 50%, rgba(255,46,63,0.1));
+    pointer-events: none;
+  }
+
+  /* 远处建筑剪影 */
+  .skyline {
+    position: absolute;
+    bottom: 56px; left: 0; right: 0;
+    height: 80px;
+    background:
+      linear-gradient(180deg, transparent, rgba(0,0,0,0.4)),
+      repeating-linear-gradient(90deg,
+        #1a0f1f 0, #1a0f1f 30px,
+        #2a1a35 30px, #2a1a35 60px,
+        #1a0f1f 60px, #1a0f1f 90px,
+        #25152e 90px, #25152e 110px);
+    clip-path: polygon(
+      0 100%, 0 60%, 4% 60%, 4% 30%, 8% 30%, 8% 50%, 14% 50%, 14% 20%,
+      18% 20%, 18% 45%, 24% 45%, 24% 70%, 30% 70%, 30% 25%, 36% 25%,
+      36% 60%, 42% 60%, 42% 35%, 48% 35%, 48% 50%, 54% 50%, 54% 15%,
+      60% 15%, 60% 55%, 66% 55%, 66% 30%, 72% 30%, 72% 65%, 78% 65%,
+      78% 40%, 84% 40%, 84% 25%, 90% 25%, 90% 50%, 96% 50%, 96% 35%, 100% 35%, 100% 100%
+    );
+    opacity: 0.7;
+    z-index: 0;
+  }
+
+  /* 地面 */
+  .ground {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 56px;
+    background:
+      linear-gradient(180deg, #2a1a35 0%, #15081f 100%),
+      repeating-linear-gradient(90deg, transparent 0, transparent 20px, rgba(255,255,255,0.02) 20px, rgba(255,255,255,0.02) 21px);
+    border-top: 2px solid var(--enemy);
+    box-shadow:
+      0 -2px 0 0 #1a0a25,
+      0 -8px 30px var(--enemy-glow),
+      inset 0 4px 12px rgba(0,0,0,0.5);
+    z-index: 1;
+  }
+  .ground::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--enemy), transparent);
+    animation: groundPulse 2s ease-in-out infinite;
+  }
+  @keyframes groundPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* Boss 区域 (只剩 sprite,bubble 移到顶部独立位置) */
+  .boss-area {
+    position: absolute;
+    right: 5rem;
+    bottom: 56px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+  }
+  .boss-nameplate {
+    position: absolute;
+    bottom: 102px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.15rem 0.6rem;
+    border: 1px solid #ffffff26;
+    border-left: 3px solid var(--warning);
+    background: linear-gradient(180deg, #0b0816, #141026);
+    color: var(--ink);
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6), 0 0 18px var(--warning-glow);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .boss-sprite {
+    width: 96px; height: 96px;
+    background-image: url('data:image/png;base64,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');
+    background-size: 1056px 96px;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    animation: bossIdleS 1.5s steps(11) infinite;
+    transform: scaleX(-1);
+    filter: drop-shadow(0 0 12px var(--enemy-glow));
+  }
+  @keyframes bossIdleS {
+    from { background-position: 0 0; }
+    to { background-position: -1056px 0; }
+  }
+
+  /* 顶部独立对话框 (修复了被墙挡住的 bug) */
+  .boss-bubble {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 8;
+    background: linear-gradient(180deg, var(--bg), var(--bg-2));
+    border: 2px solid var(--enemy);
+    padding: 0.85rem 1.2rem;
+    max-width: 480px;
+    width: calc(100% - 4rem);
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: var(--ink);
+    text-align: center;
+    animation: bubblePop 0.5s ease-out;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6), 0 0 40px var(--enemy-soft);
+  }
+  .boss-bubble::before {
+    content: attr(data-boss-name);
+    position: absolute;
+    top: -10px; left: 1rem;
+    background: var(--enemy); color: var(--ink);
+    padding: 0.15rem 0.6rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    font-weight: 700;
+  }
+  .boss-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    right: 80px;
+    border: 5px solid transparent;
+    border-top-color: var(--enemy);
+  }
+  @keyframes bubblePop {
+    0% { opacity: 0; transform: translate(-50%, -10px) scale(0.95); }
+    60% { transform: translate(-50%, 2px) scale(1.02); }
+    100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+
+  /* 玩家 (跳跃高度由 JS 动态设置 transform) */
+  .player {
+    position: absolute;
+    left: 4.5rem;
+    bottom: 56px;
+    width: 64px; height: 64px;
+    background-image: url('data:image/png;base64,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');
+    background-size: 768px 64px;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    animation: playerRun 0.7s steps(12) infinite;
+    z-index: 3;
+    filter: drop-shadow(0 0 8px var(--player-glow));
+    transition: transform 0.35s cubic-bezier(.3, 1.5, .5, 1);
+  }
+  @keyframes playerRun {
+    from { background-position: 0 0; }
+    to { background-position: -768px 0; }
+  }
+  .player.idle {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWAAAAAgCAYAAAAsTqKUAAAAAXNSR0IArs4c6QAABQFJREFUeJztnTFr40gUx//O5sgWR2AxAZNggovdYrcx12/hzrhLsR9g07jYb5CAi0D2G1zh5u4DpHAn3Km4PmSLXHEpzBISFpbdQLjiloTVFfYokj2SPJKtN5L+fzCJZ0b6PZ7em5FGIxmgKIqiKIqiKIqiKIqiKIqiKIqiKIqiKIoqg2rSBlBUUIf9I7hjx1PfO92eH6PB8qDi2gTr/hh+JN9yftW0KW0AFZZ0Akjz3bHj/fVm1//+dux4nW6v5o4d7+Dkm3ab0SC6japLBJNvBV86/vLmLzimag6wjd/ab4cT4PIWyQlQj2yj6orEP3vR8L9ffP0Fp5vXidvFifxi8aXjL0/+whmw9AhYdT4AfLn96f9//NjE6axTHw3qsXYntSkCv9Pt1d7N9nX82MTp5jWOH5to7zygsbsRsrGxuxGyFYBfFmyrjiH59vPVvpXKHv/aKYgqOcA2vnQCSPPdseOdvWiEzrxON6+BO+D4a9Nv1975ifGnZ2jvhPmqbPzp2dO2BiJfli8df3nzFzrgqjnANr50AkjzgakP23iYMh+bM94DgIdQu2kZtGXq7xkaeHf3hfyC8KXjL2++dgqiSg6wjQ9UOwHn5fvvLvUuMon8/PnS8ZcnXzsFUSUH2MgPqooJCMD32VZ/Eiqf/LOL//78O1T2/P1rtF7dxta5Q8eDwbJL8mX5SmWP/8RlaGV3gK186QSQ4ne6vdrb2RTQVn+C3t52qN7BLZ6/fx0qa726RW9vO7ZulAQm3wq+UlXiP7IDrooDbONLJ4A0X9ngjh1vng1gas/ev3Ol24l1JiJfji8df3nztTfhquQA2/jKhqomYJJ+d381av+hM28P+bbzpeMvT772DLhKDrCRH6cqJGCUnJt7fOiYb6M7juQXjw+UL/6NH0UumwOKxJdOAGm+bj/OzX1su1UmP/myfOn4WwffqAMuowOKxJdOgDz5nW6vNho4nm4aKMmmeft+DFvodHu1yfCC/ILwl2UVPf6NOuAyOsBWvnQCSPOVDe7Q8ZzZjVATX6rjothGYPLF+dLxlxc/sgOuigNs5SsbqpqA8zYAACLexaHTj2HL3z4tm3xZvnT85cGPPQOuggNs5gdtAFC5BASmTybqXoL025uXkducX17h4OQbRoM6XMMXwZBvFx94iqU08bcKrZO/1BSEhAMCr26rtYbt1B3A5PNFqrknab6SdAJI8tOwVf355RWA6VJCd5jOBvLt5CfZEIw/2/kbusJ5A9Rn3oCoDwC//VZ/Evke3Tgd9o9w2D9Ca7/tZeG39tue2ldR+Krzz5IASmn8L81X7OBDMM7Nfeo3zaWxgXx7+SbxZzs/sgOWdoCyQaoDsIEfVJYEALL/HIwU37m59+fRo85G1inyyV8nP3EKIjiXmacDngaAbd+OtDaoywAYPIoszVeS8r80PzT3DPVIuPmKkuBctOlNWPLJXzc/dhVElAHnl1eJcyDLGpAkXQdgws8qSX7wGGTx/+TzRaabkJJ8YPFnnkz4WW+Akk/+OvmJqyB0BowGdYzwPXK7g5PFfZgqbgAw4a9jBFw3PzhfrB6LDtab+t904JPmJ8mEvw6RT/6q+MaPIk/PCOvajjV42a7aZZFuADDlr3oEzJOvUxr/qw51FT8LXkT+KkU++avkx66C0MGXWde6bDtTkU8++eSXib/UGXDwcjxup8u2MxX55JNPfhn5/wOlAZOxzHJ5ewAAAABJRU5ErkJggg==');
+    background-size: 704px 64px;
+    animation: playerIdle 1.2s steps(11) infinite;
+  }
+  @keyframes playerIdle {
+    from { background-position: 0 0; }
+    to { background-position: -704px 0; }
+  }
+  .player.jump {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAArNJREFUWIXtVj+LGkEU/61n8IrgcYggishCchx3zZL+iq2ybBMkuQ9w1xg4yAc4iYWgHyAQyDbJB7CQNIOpLK4PXpEUSUCCKMJxESRFRHFSuLM3szszqyZd8gOReX/m/d6b92YW+I9/HUZYcF65RLdDKFvbjhvY8HIeOhte99ZrRnyTYUG3Q+jVcT5Yn3QItR3X6HYILddvpVm0a2obppM6QlIBs2TR1n4uWPdu7qGRHKj81wIjsFYFbMc1Tv0yVhdFNJIDVBdFWNk5cvlEYDceLZHLJzAeLQV/JuNtWRVl5KRH0NrPCZk3kgNgAlRvioGdlV2ic70DKysSYLLO9c6drwYRAiwLC/NV0EXRDzgHMBfsVjJIZey/hRxOJ+PNCPAIMpjEWW4HJQHGOlXpC/L+lzx+vfssyHbPjmAejLS6rkcoJE0vbcITvwlTlT7cQlrQE4ywe3YkyMyDEdxCWqtrKxKVVoDNdDg4gBWhws+QNB2rUyG2B8J43b2/kf2FHSb0BwTIcIoLe6P4IMNp5Bi3JiDbiAynWjtdcC0B23GNdo1QWSPGkQoTnHkmbMc1+l4vok9IfAQSM88EGU6lmcYF5oOr7GKPwHZcw59hQPEayjDzzMBfZxchIHuxPrx4Zjx//0145x8dP1Ru+vHTVwDAmycPjMevovvx0LJjMEuW8M7rgvMk2rUM+t97m1XgvHIprHUfIuvALFl0o++BcPDVW6DvdB1SlT66HqGqSkinQMaUDKdo1zJbE1FBO4Z88Jlngh0FazIVmL5cvw2mQQXlEfhVMEzPCl5G/ihePv2h3LRcF9e6RpRWgG9E3RzbjmvwvzuiK6xzeSkrEJ4GHu1aRkuMBWa3oA0XwBZToN5c3ozCrYn4W3BtmCWLHjb36GFzj5oli+qqsynWqgCf2V/LysdvpsE0ltXjVXIAAAAASUVORK5CYII=');
+    background-size: 64px 64px;
+    animation: none;
+  }
+  .player.fall {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAArFJREFUWIXtV01rGkEYftZYzKEIQQRRRAZSD8ll6T2HPVX2IhLyA9KLQv5BJR4E+wMKBffSnoOFpZdhb3voPZhDemgKi4giBCNIDxXF7WGdzX7MrGsKvTTPZZn3Y55n3nn3dQWe8Yz/HVLQ8Lb+DqZBbbZWKqob47V7ERXj9X3S3odyk0GDaVD723HeXZ8Y1FYqqmQa1K61p9xT6C1xDPNxE8GpACnJdu8g56779y/QSQ5F+bHABMSqgFJRpbNNGZurIjrJIZqrIuTsErl8wo2bjNfI5ROYjNe+fGbzxrIq8sRxr6B3kPOdvJMcAjOgeV904+TsGsbNHuSsXwCzGTd7j7kRCAlgp5CxdEhXxQ3hEsDSF+fYwLWxZw85nM0muwnwwj3BbFvk0yAUwFSn6pbPbv3I4/fn7z7b/vkRSHkc6TM1aoPT9NwmPNk0YapuQS2kfX6KMfbPj3w2Uh5DLaQjfbrgoNwKsHc6SA7AEVT4FbCmt/pE2NoDQXw0X+4Uf6EEBf2FADqa40LZiR90NA9dY2wBeisD4LEXeBvR0Txk88ZFkQsFmAa1vQ2otwgopyHjENDRHAuNIFW3QDTZtgZ935sQ6wqcH5hoIh4xAJdchJ2bMC4WGgEQniOxBHSrh1JDg003ybwyvz5+Jdz0+vYOtfbU7SEmKFh+oYCrRRndKqSGBhuAb4jU2tNIcibu+vbOJQbAJRcKYOhWDyUAaHz9afOmYhyIiBkSUc5/gcgKvPnwBQBASrLPzsqrtzKxriQKwgowcsC5ioVGQEfz0ODRWxlcnj7g8vTBFcaeqboFUpK5H7JbBQTBRAShVFRJqaiSNehLTAxDnJ7ZaQ5Yg75ENNnWPWsFqi/Gee/jNyv3fwHA/4KNA1KSA2M8A6WiSqL9QhV4KjEDG2K6Z321EMf/AROLKrI7T8TAAAAAAElFTkSuQmCC');
+    background-size: 64px 64px;
+    animation: none;
+  }
+  .player.hit {
+    background-image: url('data:image/png;base64,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');
+    background-size: 448px 64px;
+    animation: playerHit 0.6s steps(7) forwards;
+    filter: drop-shadow(0 0 12px var(--enemy));
+  }
+  @keyframes playerHit {
+    from { background-position: 0 0; }
+    to { background-position: -448px 0; }
+  }
+
+  /* ========= 蓄力跳跃系统 (核心新增!) ========= */
+  /* 跳跃力仪表 - 评分出来后显示 */
+  .jump-meter {
+    position: absolute;
+    left: 50%;
+    bottom: 100px;
+    transform: translateX(-50%);
+    z-index: 6;
+    background: var(--bg);
+    border: 2px solid var(--warning);
+    padding: 0.8rem 1.2rem;
+    text-align: center;
+    box-shadow: 0 0 30px var(--warning-glow);
+    animation: meterIn 0.4s cubic-bezier(.2, 1.5, .4, 1);
+    display: none;
+  }
+  .jump-meter.active { display: block; }
+  @keyframes meterIn {
+    from { opacity: 0; transform: translate(-50%, 20px) scale(0.8); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+  .jump-meter-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--warning);
+    margin-bottom: 0.5rem;
+  }
+  .jump-meter-bar-track {
+    width: 200px;
+    height: 14px;
+    background: var(--bg-2);
+    border: 1px solid #ffffff15;
+    position: relative;
+    overflow: hidden;
+  }
+  .jump-meter-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--enemy), var(--warning), var(--player));
+    width: 0%;
+    transition: width 0.6s cubic-bezier(.3, 1.4, .5, 1);
+    box-shadow: 0 0 10px currentColor;
+  }
+  .jump-meter-power {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 1.4rem;
+    margin-top: 0.4rem;
+    color: var(--warning);
+  }
+
+  /* 按空格提示 - 关键引导 */
+  .space-prompt {
+    position: absolute;
+    left: 50%;
+    bottom: 30px;
+    transform: translateX(-50%);
+    z-index: 7;
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.1rem;
+    color: var(--warning);
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 15px var(--warning-glow), 0 0 30px var(--warning-glow);
+    animation: spacePulse 0.8s ease-in-out infinite;
+    display: none;
+    white-space: nowrap;
+  }
+  .space-prompt.active { display: block; }
+  .space-prompt kbd {
+    display: inline-block;
+    background: var(--warning);
+    color: var(--bg);
+    padding: 0.4rem 0.9rem;
+    margin: 0 0.3rem;
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.1rem;
+    box-shadow: 0 4px 0 #b39400, 0 0 20px var(--warning);
+    transform: translateY(0);
+    transition: transform 0.05s;
+  }
+  .space-prompt.pressed kbd {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 #b39400, 0 0 30px var(--warning);
+  }
+  @keyframes spacePulse {
+    0%, 100% { transform: translate(-50%, 0); opacity: 1; }
+    50% { transform: translate(-50%, -6px); opacity: 0.8; }
+  }
+
+  /* 评分出现时游戏画面闪一下橙色,引起注意 */
+  .game-stage.alert::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle, transparent 40%, var(--warning-glow));
+    pointer-events: none;
+    animation: alertFlash 0.6s ease-out;
+    z-index: 4;
+  }
+  @keyframes alertFlash {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+  }
+
+  /* 障碍墙 */
+  .wall {
+    position: absolute;
+    bottom: 56px;
+    width: 64px; height: 168px;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAYCAYAAADpnJ2CAAAAAXNSR0IArs4c6QAAAUlJREFUSIljYBjugBGboKK8wX9qGD7DX4XRfdIaFDEWbJbN8FdhEDOQImigqLYmw+ur1xlEtTWxytuGzfzPgOYpDAthYOvUGwze2Rp4LXx99ToKTYxerBa+uPmBwdRagOHVhWd4LcQFTK35cOrFamHDjTcMyW+YGBgYGBjmvnnFwMDAwJAsIobXEnR1MD5xFmqIMEio80E0bnzF0KAhwsDA8A+vhQ0iIgwNN94wyIr8Y5BQF2AwZeBjyNh4hzgLJdQF4Ikm+egnuOX4wIubHxiSRcQYJNT5EAkOi4VMBE3CYTiMhrHRAa6US5aFEuoC5GhjYGDAky1oZTFZPqQEUGwhrjhELwyoZiGuYKVqoiEGkO1DXCUGuWoxqidY1YReRJFbtN1/eAHFDqwWEls9EQJBjYcwLMQZpFun3iDbInx66V490b2JMfwBAAbAfL47JIHCAAAAAElFTkSuQmCC');
+    background-size: 64px 64px;
+    background-repeat: repeat-y;
+    image-rendering: pixelated;
+    z-index: 2;
+    box-shadow: -6px 0 24px var(--enemy-glow);
+    transition: opacity 0.3s, transform 0.6s, left 0.2s linear;
+    will-change: left, transform;
+  }
+  /* ========= 新奇障碍物皮肤 ========= */
+  .wall.rock {
+    border-radius: 14px;
+    background-image:
+      radial-gradient(circle at 30% 30%, rgba(255,255,255,0.20), transparent 45%),
+      radial-gradient(circle at 70% 55%, rgba(0,0,0,0.35), transparent 55%),
+      radial-gradient(circle at 40% 80%, rgba(0,0,0,0.22), transparent 55%),
+      linear-gradient(180deg, #3a2f2a, #1b1411);
+    border: 1px solid #ffffff12;
+    box-shadow: -6px 0 26px rgba(255,138,58,0.25), -2px 0 10px rgba(0,0,0,0.55);
+  }
+  .wall.fireball {
+    border-radius: 999px;
+    background-image:
+      radial-gradient(circle at 30% 30%, #fff7d6 0 18%, #ffd60a 18% 34%, #ff8a3a 34% 56%, #ff2e3f 56% 80%, rgba(0,0,0,0.0) 80%),
+      radial-gradient(circle at 50% 60%, rgba(255,46,63,0.55), transparent 55%);
+    box-shadow: 0 0 30px rgba(255,138,58,0.55), 0 0 60px rgba(255,46,63,0.35);
+    animation: fireballFlicker 0.22s infinite alternate;
+  }
+  @keyframes fireballFlicker {
+    from { filter: drop-shadow(0 0 10px rgba(255,214,10,0.6)); transform: translateY(0); }
+    to   { filter: drop-shadow(0 0 18px rgba(255,46,63,0.7)); transform: translateY(-1px); }
+  }
+  .wall.spikes {
+    background-image:
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 6px, rgba(0,0,0,0.18) 6px 12px),
+      linear-gradient(180deg, #1b2133, #0f1320);
+    clip-path: polygon(0 100%, 0 18%, 8% 0, 16% 18%, 24% 0, 32% 18%, 40% 0, 48% 18%, 56% 0, 64% 18%, 72% 0, 80% 18%, 88% 0, 96% 18%, 100% 0, 100% 100%);
+    border: 1px solid rgba(0,229,255,0.35);
+    box-shadow: -6px 0 24px rgba(0,229,255,0.25);
+  }
+  .wall.laser {
+    background-image:
+      linear-gradient(180deg, rgba(0,229,255,0.85), rgba(167,139,250,0.75)),
+      radial-gradient(circle at 50% 50%, rgba(255,255,255,0.22), transparent 60%);
+    border-radius: 10px;
+    border: 1px solid rgba(0,229,255,0.55);
+    box-shadow: 0 0 22px rgba(0,229,255,0.55), 0 0 44px rgba(167,139,250,0.35);
+    animation: laserPulse 0.5s infinite alternate;
+  }
+  @keyframes laserPulse {
+    from { opacity: 0.7; }
+    to { opacity: 1; }
+  }
+  .wall::before {
+    content: ''; position: absolute;
+    top: -6px; left: 0; right: 0; height: 4px;
+    background: var(--enemy);
+    box-shadow: 0 0 10px var(--enemy);
+  }
+  .wall.incoming {
+    /* v0.6: 改为 JS 控制缓慢靠近(答题 10 秒),不再用固定 CSS 动画 */
+    left: 100%;
+  }
+  @keyframes wallApproach {
+    from { right: -120px; }
+    to { right: 30%; }
+  }
+  .wall.passed {
+    opacity: 0;
+    transform: translateX(-300px) rotate(-20deg);
+  }
+  .wall.broken {
+    animation: wallBreak 0.7s ease-out forwards;
+  }
+  @keyframes wallBreak {
+    0%   { transform: scale(1) rotate(0); opacity: 1; }
+    30%  { transform: scale(1.18) rotate(8deg); }
+    100% { transform: scale(0.4) rotate(60deg) translateY(60px); opacity: 0; }
+  }
+
+  /* 苹果奖励 */
+  .reward-apple {
+    position: absolute;
+    width: 32px; height: 32px;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAAgCAYAAAArFsM1AAAAAXNSR0IArs4c6QAAA+NJREFUeJzt3LFOU1Ecx/EfxIQJE3Bp6kC6kbD0BRhwMmwOfQYWn8FBjO/QxRdoiBuDC0NnTRcSEoeGgaaLIYGJhbpw4HK9LffWe87/wv/7WRQVvocezv1ftFYCAAAAAAAAAAAAAAAAAAAAAMTV2erOOlvdGX0AWN6q9QKAqpowAA+PNmW5Bs996/237gMvxVI3INYHkL7vvmQ3AEPzy4+f+vD5T/I1eO8HXm/AwtmzPn+wYb3/dfeX/hsQrxcA+nb97Be+xQDsbHVnh0ebWjsY66bf0fHFVao0fTVj/5twA3Z4tGl282k5AL33A6v9j9FfqfKHs8G1g7H2377W909vND4fVfo4y6Lvtx+G36/T3zq+uNJNv3M/CK0+f0m66Xfufz/2Ojz3rfe/Cf3s21bnPzwGkpK2vfet9z9Wv/Q7NuEA0vfdDz8Pw096PAClNEN4sNFS73IqSRpstNRqr2o6uVXvcko/Ut96/y37+bMXuqnOX9F3uikHIH37/Y/Vr3QDEn7u7QJA374f1hCG33Cnrd3Tyf0AlJRkCA532nN/n378vvX+W/SLvvsM8udPqvcMFg2f0E0xAL33wxqyb6fc/9j9yv8E4/ECQN++/9TwC2KvYfTxnSTp+uRM63vbuj45S9L23rfe/yb0w1nbPZ0Unr8Y/UXDRyoeQFJ9Q9B7P7sOi/2P3X9VZQHhAA7bdz/mDmSrvaqBWuqpO4t5AaDvrx+s721LKh6AqYX2dHL76BDSj8d6/y36+Zuf+3NYcENU9xkcn49WHg2f/sMaigaQdDeE6Nd2DbTc/9j90jcggccLAP3m9LPy332nGIJFn2/K4e+9n2Wx/5Z9y5uf0B5m1jKc8z51DkHv/Szra2+M/n+dmPwBTI2+r/50cqvrkzPTIWjxONN/aFvuv3U/q2gNKfdm3vBJtQb6zdv/ZfqV/gZkOrmV5jzwqS4A9P32Aa8Wnb0g1hks0465Bu/9smuIeQ2O1S/9HuPz0UrvcrrwLic8AWXv/X7t//5P33cf8KrM2QvqPoNV2vk11PUcDM/9qmuIcQ2O2a/8HJAQWeRb/+syH5Y+/bnG56OVnrqzgf590ld2XeGLf9wfJV1D7Lb3vvX+W/ezjTLqPIPZz72Muv8Xhvd+lsX+x+xXfpDCM4KLpHwhJPr++ovaqdcwbwCnevw99q33n365l96m/3L3v+7+UgudtxFWL0tL30/f8w0YffpPDcGUL02O9Kz3v+4+X6x4dppwA5YfQimGD/2HftGve+kDLwUHBlhCfgilHj7e+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4Bn6C2vHTX1Wd+nTAAAAAElFTkSuQmCC');
+    background-size: 544px 32px;
+    background-repeat: no-repeat;
+    image-rendering: pixelated;
+    animation: appleSpin 1s steps(17) infinite, appleFly 1.6s ease-out forwards;
+    z-index: 4;
+    pointer-events: none;
+    filter: drop-shadow(0 0 8px var(--warning-glow));
+  }
+  @keyframes appleSpin {
+    from { background-position: 0 0; }
+    to { background-position: -544px 0; }
+  }
+  @keyframes appleFly {
+    0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+    50%  { opacity: 1; transform: translate(-100px, -120px) scale(1.2); }
+    100% { opacity: 0; transform: translate(-260px, -240px) scale(0.5); }
+  }
+
+  /* 分数浮字 */
+  .score-pop {
+    position: absolute;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 2.2rem;
+    pointer-events: none;
+    z-index: 10;
+    animation: scoreFly 1.8s ease-out forwards;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.9), 0 0 20px currentColor;
+    transform-origin: center;
+  }
+  .score-pop.perfect {
+    color: var(--warning);
+    font-size: 3.4rem;
+    animation: scoreFlyPerfect 2s ease-out forwards;
+  }
+  .score-pop.high { color: var(--player); }
+  .score-pop.mid { color: #80f2ff; }
+  .score-pop.low { color: var(--ink); }
+  .score-pop.fail { color: var(--enemy); font-size: 2.6rem; }
+  @keyframes scoreFly {
+    0% { opacity: 0; transform: translate(-50%, 30px) scale(0.5); }
+    20% { opacity: 1; transform: translate(-50%, -20px) scale(1.3); }
+    100% { opacity: 0; transform: translate(-50%, -120px) scale(1); }
+  }
+  @keyframes scoreFlyPerfect {
+    0% { opacity: 0; transform: translate(-50%, 40px) scale(0.3) rotate(-10deg); }
+    15% { opacity: 1; transform: translate(-50%, -20px) scale(1.6) rotate(5deg); }
+    30% { transform: translate(-50%, -30px) scale(1.4) rotate(-3deg); }
+    100% { opacity: 0; transform: translate(-50%, -160px) scale(1.2); }
+  }
+
+  /* 闪光 */
+  .flash-overlay {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle, var(--warning) 0%, transparent 70%);
+    pointer-events: none;
+    opacity: 0;
+    z-index: 5;
+  }
+  .flash-overlay.active { animation: flashBurst 0.9s ease-out; }
+  @keyframes flashBurst {
+    0% { opacity: 0; }
+    20% { opacity: 0.5; }
+    100% { opacity: 0; }
+  }
+
+  /* PERFECT 横幅 */
+  .perfect-banner {
+    position: absolute;
+    top: 30%; left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    z-index: 12;
+    pointer-events: none;
+    font-family: "Press Start 2P", monospace;
+    font-size: 2rem;
+    color: var(--warning);
+    text-shadow: 0 0 20px var(--warning), 0 0 40px var(--warning);
+    letter-spacing: 0.1em;
+  }
+  .perfect-banner.active { animation: perfectShow 1.6s ease-out forwards; }
+  @keyframes perfectShow {
+    0% { transform: translate(-50%, -50%) scale(0) rotate(-10deg); opacity: 0; }
+    20% { transform: translate(-50%, -50%) scale(1.3) rotate(3deg); opacity: 1; }
+    35% { transform: translate(-50%, -50%) scale(1) rotate(-1deg); }
+    80% { transform: translate(-50%, -50%) scale(1) rotate(0); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.2) rotate(0); opacity: 0; }
+  }
+
+  /* 控制区 */
+  .control-area {
+    background: linear-gradient(180deg, transparent, var(--bg) 30%);
+    border-top: 1px solid #ffffff08;
+    padding: 1rem 1.4rem 1.2rem;
+    z-index: 5;
+    position: relative;
+  }
+  .control-status {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--warning);
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.15em;
+    min-height: 1em;
+  }
+  .control-status::before { content: '▶ '; opacity: 0.6; }
+  .control-status.thinking { color: var(--enemy); }
+  .control-status.thinking::before { content: '⏳ '; }
+  .control-status.thinking::after {
+    content: '';
+    display: inline-block;
+    width: 1.2em;
+    text-align: left;
+    animation: dotsAnim 1.2s steps(4) infinite;
+  }
+  @keyframes dotsAnim {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
+  }
+  /* 评估结果 */
+  .eval-result {
+    background: linear-gradient(180deg, var(--bg-2), transparent);
+    border-left: 3px solid var(--player);
+    padding: 0.8rem 1rem;
+    margin-top: 0.75rem;
+    animation: evalSlide 0.4s ease-out;
+  }
+  @keyframes evalSlide {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .eval-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 1rem;
+  }
+  .eval-comment {
+    font-size: 0.95rem; font-weight: 500; color: var(--ink);
+  }
+  .eval-score {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700; font-size: 1.4rem;
+  }
+
+  /* ========= HP 血条 (HUD 中央) ========= */
+  .hud-center {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 1;
+    justify-content: center;
+    max-width: 280px;
+  }
+  .hp-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--enemy);
+    font-weight: 700;
+  }
+  .hp-bar-track {
+    flex: 1;
+    height: 12px;
+    background: var(--bg-2);
+    border: 1px solid #ffffff15;
+    position: relative;
+    overflow: hidden;
+    min-width: 120px;
+  }
+  .hp-bar-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #ff2e3f, #ff8a3a, #ffd60a);
+    transition: width 0.7s cubic-bezier(.3, 1.4, .5, 1);
+    box-shadow: 0 0 8px var(--enemy-glow);
+    position: relative;
+  }
+  .hp-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 50%;
+    background: linear-gradient(180deg, rgba(255,255,255,0.3), transparent);
+  }
+  .hp-bar-fill.low { animation: hpDanger 0.8s infinite; }
+  @keyframes hpDanger {
+    0%, 100% { box-shadow: 0 0 8px var(--enemy-glow); }
+    50% { box-shadow: 0 0 20px var(--enemy), 0 0 40px var(--enemy-glow); }
+  }
+  .hp-value {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--ink);
+    min-width: 2.5rem;
+    text-align: right;
+  }
+  .hp-value.dmg-flash {
+    animation: hpDmg 0.5s;
+  }
+  @keyframes hpDmg {
+    0%, 100% { color: var(--ink); transform: scale(1); }
+    30% { color: var(--enemy); transform: scale(1.4); }
+  }
+
+  /* HP 浮字 (扣血量提示) */
+  .hp-pop {
+    position: absolute;
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--enemy);
+    pointer-events: none;
+    z-index: 12;
+    animation: hpPopFly 1.4s ease-out forwards;
+    text-shadow: 0 0 12px currentColor, 0 2px 6px rgba(0,0,0,0.8);
+  }
+  .hp-pop.heal { color: var(--player); }
+  .hp-pop.safe { color: var(--warning); }
+  @keyframes hpPopFly {
+    0% { opacity: 0; transform: translate(-50%, 10px) scale(0.5); }
+    20% { opacity: 1; transform: translate(-50%, -10px) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -50px) scale(1); }
+  }
+
+  /* ========= 4 选项卡片 ========= */
+  .options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-top: 0.4rem;
+  }
+  .option-card {
+    background: var(--bg-2);
+    border: 1px solid #ffffff15;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    cursor: pointer;
+    color: var(--ink);
+    font-family: "Noto Sans SC", sans-serif;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    transition: all 0.2s;
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+  .option-card:hover {
+    border-color: var(--player);
+    background: var(--bg-3);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--player-soft);
+  }
+  .option-card:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+    transform: none;
+    box-shadow: none;
+  }
+  .option-card.chosen {
+    border-color: var(--warning);
+    background: var(--bg-3);
+  }
+  .option-letter {
+    flex-shrink: 0;
+    width: 1.6rem;
+    height: 1.6rem;
+    background: var(--bg);
+    border: 1px solid #ffffff20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Press Start 2P", monospace;
+    font-size: 0.7rem;
+    color: var(--player);
+  }
+  .option-card:hover .option-letter {
+    border-color: var(--player);
+    color: var(--bg);
+    background: var(--player);
+  }
+  .option-text {
+    flex: 1;
+  }
+
+  /* ========= 烟花特效 (过墙奖励) ========= */
+  .firework {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    pointer-events: none;
+    z-index: 9;
+    border-radius: 50%;
+    box-shadow: 0 0 14px currentColor;
+  }
+  .firework.trail {
+    animation: fireworkUp 0.6s ease-out forwards;
+  }
+  @keyframes fireworkUp {
+    0% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-280px); }
+  }
+  .firework-burst {
+    position: absolute;
+    pointer-events: none;
+    z-index: 9;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    box-shadow: 0 0 16px currentColor;
+    animation: burstParticle 1.2s ease-out forwards;
+  }
+  @keyframes burstParticle {
+    0% { opacity: 1; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.3); }
+  }
+
+  /* 失败屏幕震动 */
+  .game-stage.shake {
+    animation: stageShake 0.4s;
+  }
+  @keyframes stageShake {
+    0%, 100% { transform: translate(0, 0); }
+    20%, 60% { transform: translate(-6px, 0); }
+    40%, 80% { transform: translate(6px, 0); }
+  }
+
+  /* =========================================
+     BOSS 战败 CG
+  ========================================= */
+  #screen-defeat {
+    align-items: center;
+    justify-content: center;
+    padding: 1.8rem;
+  }
+  .defeat-cg {
+    position: relative;
+    width: min(820px, 100%);
+    min-height: 360px;
+    border: 2px solid #ffffff12;
+    border-left: 4px solid var(--warning);
+    background:
+      radial-gradient(circle at 50% 30%, rgba(255,214,10,0.18), transparent 55%),
+      radial-gradient(circle at 70% 70%, rgba(255,46,63,0.12), transparent 55%),
+      linear-gradient(180deg, #070611, #0e0b1d 60%, #070611);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.75), 0 0 60px rgba(255,46,63,0.10);
+    overflow: hidden;
+    animation: cgIn 0.55s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  @keyframes cgIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.96); filter: blur(10px); }
+    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  .defeat-cg::before {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 10px),
+      linear-gradient(180deg, transparent, rgba(0,0,0,0.55));
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.6;
+  }
+  .defeat-head {
+    padding: 1.1rem 1.2rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .defeat-tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.35em;
+    color: var(--ink-dim);
+  }
+  .defeat-title {
+    font-family: "Press Start 2P", monospace;
+    font-size: 1.1rem;
+    letter-spacing: 0.12em;
+    color: var(--warning);
+    text-shadow: 0 0 18px var(--warning-glow);
+    line-height: 1.6;
+  }
+  .defeat-sub {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.95rem;
+    color: var(--ink);
+    opacity: 0.9;
+  }
+  .defeat-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.2rem;
+    padding: 0.6rem 1.2rem 1.2rem;
+  }
+  .cg-boss-wrap {
+    flex: 0 0 auto;
+    width: 300px;
+    height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .cg-boss-wrap::after {
+    content: '';
+    position: absolute;
+    width: 260px;
+    height: 80px;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle, rgba(255,46,63,0.25), transparent 70%);
+    filter: blur(2px);
+  }
+  .cg-boss-sprite {
+    transform: scale(3.0) scaleX(-1);
+    filter: grayscale(1) contrast(1.15) brightness(0.85) drop-shadow(0 0 24px rgba(255,46,63,0.35));
+    animation: bossDefeat 0.75s steps(11) infinite;
+  }
+  @keyframes bossDefeat {
+    from { background-position: 0 0; opacity: 0.9; }
+    to { background-position: -1056px 0; opacity: 0.75; }
+  }
+  .defeat-lines {
+    flex: 1;
+    text-align: left;
+    padding: 0.4rem 0;
+  }
+  .defeat-lines .line {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.95rem;
+    color: var(--ink);
+    margin: 0.35rem 0;
+    opacity: 0.92;
+  }
+  .defeat-actions {
+    padding: 0 1.2rem 1.2rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+  }
+
+  /* =========================================
+     结算页
+  ========================================= */
+  #screen-result {
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+  .result-wrap {
+    text-align: center;
+    max-width: 30rem;
+    width: 100%;
+  }
+  .result-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.4em;
+    color: var(--ink-dim);
+  }
+  .result-grade {
+    font-family: "Noto Serif SC", serif;
+    font-weight: 900;
+    font-size: clamp(7rem, 20vw, 13rem);
+    line-height: 1;
+    margin: 0.5rem 0;
+    background: linear-gradient(180deg, var(--warning), var(--enemy));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradeReveal 0.9s cubic-bezier(.2, 1.5, .4, 1);
+    filter: drop-shadow(0 4px 30px var(--enemy-glow));
+  }
+  @keyframes gradeReveal {
+    0% { opacity: 0; transform: scale(2.5); filter: blur(30px); }
+    100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 4px 30px var(--enemy-glow)) blur(0); }
+  }
+  .result-verdict {
+    font-family: "Noto Serif SC", serif;
+    font-weight: 900;
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+  }
+  .result-comment {
+    text-align: center;
+    color: var(--ink);
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
+    padding: 0 1rem;
+  }
+  .result-rounds-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: var(--ink-dim);
+    letter-spacing: 0.2em;
+    margin-bottom: 0.5rem;
+  }
+  .result-rounds {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-bottom: 1.5rem;
+  }
+  .result-round-dot {
+    width: 2.4rem; height: 2.4rem;
+    background: var(--bg-2);
+    border-left: 2px solid #ffffff15;
+    display: flex; align-items: center; justify-content: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+  }
+  .result-actions {
+    display: flex; gap: 0.75rem; justify-content: center;
+  }
+
+  /* =========================================
+     响应式
+  ========================================= */
+  @media (max-width: 640px) {
+    .home-title { font-size: clamp(2.5rem, 12vw, 4rem); }
+    .reveal-name { font-size: 2rem; }
+    .boss-area { right: 1.5rem; }
+    .boss-bubble { max-width: 200px; font-size: 0.78rem; }
+    .player { left: 2rem; }
+    .skyline { display: none; }
+    .home-pitch { font-size: 0.9rem; }
+  }
+
+  /* 隐藏滚动条美化 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ffffff10; }
+  ::-webkit-scrollbar-thumb:hover { background: #ffffff20; }
+</style>
+</head>
+<body>
+
+<!-- 全局背景装饰 -->
+<div class="bg-decor">
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="bg-noise"></div>
+  <div class="bg-scanline"></div>
+</div>
+
+<!-- 飘动的像素小元素 -->
+<div class="floating-pixel fp1" style="background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAAgCAYAAAArFsM1AAAAAXNSR0IArs4c6QAAA+NJREFUeJzt3LFOU1Ecx/EfxIQJE3Bp6kC6kbD0BRhwMmwOfQYWn8FBjO/QxRdoiBuDC0NnTRcSEoeGgaaLIYGJhbpw4HK9LffWe87/wv/7WRQVvocezv1ftFYCAAAAAAAAAAAAAAAAAAAAAMTV2erOOlvdGX0AWN6q9QKAqpowAA+PNmW5Bs996/237gMvxVI3INYHkL7vvmQ3AEPzy4+f+vD5T/I1eO8HXm/AwtmzPn+wYb3/dfeX/hsQrxcA+nb97Be+xQDsbHVnh0ebWjsY66bf0fHFVao0fTVj/5twA3Z4tGl282k5AL33A6v9j9FfqfKHs8G1g7H2377W909vND4fVfo4y6Lvtx+G36/T3zq+uNJNv3M/CK0+f0m66Xfufz/2Ojz3rfe/Cf3s21bnPzwGkpK2vfet9z9Wv/Q7NuEA0vfdDz8Pw096PAClNEN4sNFS73IqSRpstNRqr2o6uVXvcko/Ut96/y37+bMXuqnOX9F3uikHIH37/Y/Vr3QDEn7u7QJA374f1hCG33Cnrd3Tyf0AlJRkCA532nN/n378vvX+W/SLvvsM8udPqvcMFg2f0E0xAL33wxqyb6fc/9j9yv8E4/ECQN++/9TwC2KvYfTxnSTp+uRM63vbuj45S9L23rfe/yb0w1nbPZ0Unr8Y/UXDRyoeQFJ9Q9B7P7sOi/2P3X9VZQHhAA7bdz/mDmSrvaqBWuqpO4t5AaDvrx+s721LKh6AqYX2dHL76BDSj8d6/y36+Zuf+3NYcENU9xkcn49WHg2f/sMaigaQdDeE6Nd2DbTc/9j90jcggccLAP3m9LPy332nGIJFn2/K4e+9n2Wx/5Z9y5uf0B5m1jKc8z51DkHv/Szra2+M/n+dmPwBTI2+r/50cqvrkzPTIWjxONN/aFvuv3U/q2gNKfdm3vBJtQb6zdv/ZfqV/gZkOrmV5jzwqS4A9P32Aa8Wnb0g1hks0465Bu/9smuIeQ2O1S/9HuPz0UrvcrrwLic8AWXv/X7t//5P33cf8KrM2QvqPoNV2vk11PUcDM/9qmuIcQ2O2a/8HJAQWeRb/+syH5Y+/bnG56OVnrqzgf590ld2XeGLf9wfJV1D7Lb3vvX+W/ezjTLqPIPZz72Muv8Xhvd+lsX+x+xXfpDCM4KLpHwhJPr++ovaqdcwbwCnevw99q33n365l96m/3L3v+7+UgudtxFWL0tL30/f8w0YffpPDcGUL02O9Kz3v+4+X6x4dppwA5YfQimGD/2HftGve+kDLwUHBlhCfgilHj7e+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4Bn6C2vHTX1Wd+nTAAAAAElFTkSuQmCC'); background-size: 408px 24px; animation: floatY 8s ease-in-out infinite, applesSpin 1s steps(17) infinite;"></div>
+<div class="floating-pixel fp2" style="background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAAgCAYAAAArFsM1AAAAAXNSR0IArs4c6QAAA+NJREFUeJzt3LFOU1Ecx/EfxIQJE3Bp6kC6kbD0BRhwMmwOfQYWn8FBjO/QxRdoiBuDC0NnTRcSEoeGgaaLIYGJhbpw4HK9LffWe87/wv/7WRQVvocezv1ftFYCAAAAAAAAAAAAAAAAAAAAAMTV2erOOlvdGX0AWN6q9QKAqpowAA+PNmW5Bs996/237gMvxVI3INYHkL7vvmQ3AEPzy4+f+vD5T/I1eO8HXm/AwtmzPn+wYb3/dfeX/hsQrxcA+nb97Be+xQDsbHVnh0ebWjsY66bf0fHFVao0fTVj/5twA3Z4tGl282k5AL33A6v9j9FfqfKHs8G1g7H2377W909vND4fVfo4y6Lvtx+G36/T3zq+uNJNv3M/CK0+f0m66Xfufz/2Ojz3rfe/Cf3s21bnPzwGkpK2vfet9z9Wv/Q7NuEA0vfdDz8Pw096PAClNEN4sNFS73IqSRpstNRqr2o6uVXvcko/Ut96/y37+bMXuqnOX9F3uikHIH37/Y/Vr3QDEn7u7QJA374f1hCG33Cnrd3Tyf0AlJRkCA532nN/n378vvX+W/SLvvsM8udPqvcMFg2f0E0xAL33wxqyb6fc/9j9yv8E4/ECQN++/9TwC2KvYfTxnSTp+uRM63vbuj45S9L23rfe/yb0w1nbPZ0Unr8Y/UXDRyoeQFJ9Q9B7P7sOi/2P3X9VZQHhAA7bdz/mDmSrvaqBWuqpO4t5AaDvrx+s721LKh6AqYX2dHL76BDSj8d6/y36+Zuf+3NYcENU9xkcn49WHg2f/sMaigaQdDeE6Nd2DbTc/9j90jcggccLAP3m9LPy332nGIJFn2/K4e+9n2Wx/5Z9y5uf0B5m1jKc8z51DkHv/Szra2+M/n+dmPwBTI2+r/50cqvrkzPTIWjxONN/aFvuv3U/q2gNKfdm3vBJtQb6zdv/ZfqV/gZkOrmV5jzwqS4A9P32Aa8Wnb0g1hks0465Bu/9smuIeQ2O1S/9HuPz0UrvcrrwLic8AWXv/X7t//5P33cf8KrM2QvqPoNV2vk11PUcDM/9qmuIcQ2O2a/8HJAQWeRb/+syH5Y+/bnG56OVnrqzgf590ld2XeGLf9wfJV1D7Lb3vvX+W/ezjTLqPIPZz72Muv8Xhvd+lsX+x+xXfpDCM4KLpHwhJPr++ovaqdcwbwCnevw99q33n365l96m/3L3v+7+UgudtxFWL0tL30/f8w0YffpPDcGUL02O9Kz3v+4+X6x4dppwA5YfQimGD/2HftGve+kDLwUHBlhCfgilHj7e+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4Bn6C2vHTX1Wd+nTAAAAAElFTkSuQmCC'); background-size: 408px 24px; animation: floatY 8s ease-in-out infinite -2s, applesSpin 1s steps(17) infinite;"></div>
+<div class="floating-pixel fp3" style="background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAAgCAYAAAArFsM1AAAAAXNSR0IArs4c6QAAA+NJREFUeJzt3LFOU1Ecx/EfxIQJE3Bp6kC6kbD0BRhwMmwOfQYWn8FBjO/QxRdoiBuDC0NnTRcSEoeGgaaLIYGJhbpw4HK9LffWe87/wv/7WRQVvocezv1ftFYCAAAAAAAAAAAAAAAAAAAAAMTV2erOOlvdGX0AWN6q9QKAqpowAA+PNmW5Bs996/237gMvxVI3INYHkL7vvmQ3AEPzy4+f+vD5T/I1eO8HXm/AwtmzPn+wYb3/dfeX/hsQrxcA+nb97Be+xQDsbHVnh0ebWjsY66bf0fHFVao0fTVj/5twA3Z4tGl282k5AL33A6v9j9FfqfKHs8G1g7H2377W909vND4fVfo4y6Lvtx+G36/T3zq+uNJNv3M/CK0+f0m66Xfufz/2Ojz3rfe/Cf3s21bnPzwGkpK2vfet9z9Wv/Q7NuEA0vfdDz8Pw096PAClNEN4sNFS73IqSRpstNRqr2o6uVXvcko/Ut96/y37+bMXuqnOX9F3uikHIH37/Y/Vr3QDEn7u7QJA374f1hCG33Cnrd3Tyf0AlJRkCA532nN/n378vvX+W/SLvvsM8udPqvcMFg2f0E0xAL33wxqyb6fc/9j9yv8E4/ECQN++/9TwC2KvYfTxnSTp+uRM63vbuj45S9L23rfe/yb0w1nbPZ0Unr8Y/UXDRyoeQFJ9Q9B7P7sOi/2P3X9VZQHhAA7bdz/mDmSrvaqBWuqpO4t5AaDvrx+s721LKh6AqYX2dHL76BDSj8d6/y36+Zuf+3NYcENU9xkcn49WHg2f/sMaigaQdDeE6Nd2DbTc/9j90jcggccLAP3m9LPy332nGIJFn2/K4e+9n2Wx/5Z9y5uf0B5m1jKc8z51DkHv/Szra2+M/n+dmPwBTI2+r/50cqvrkzPTIWjxONN/aFvuv3U/q2gNKfdm3vBJtQb6zdv/ZfqV/gZkOrmV5jzwqS4A9P32Aa8Wnb0g1hks0465Bu/9smuIeQ2O1S/9HuPz0UrvcrrwLic8AWXv/X7t//5P33cf8KrM2QvqPoNV2vk11PUcDM/9qmuIcQ2O2a/8HJAQWeRb/+syH5Y+/bnG56OVnrqzgf590ld2XeGLf9wfJV1D7Lb3vvX+W/ezjTLqPIPZz72Muv8Xhvd+lsX+x+xXfpDCM4KLpHwhJPr++ovaqdcwbwCnevw99q33n365l96m/3L3v+7+UgudtxFWL0tL30/f8w0YffpPDcGUL02O9Kz3v+4+X6x4dppwA5YfQimGD/2HftGve+kDLwUHBlhCfgilHj7e+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4Bn6C2vHTX1Wd+nTAAAAAElFTkSuQmCC'); background-size: 408px 24px; animation: floatY 8s ease-in-out infinite -4s, applesSpin 1s steps(17) infinite;"></div>
+<div class="floating-pixel fp4" style="background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAiAAAAAgCAYAAAArFsM1AAAAAXNSR0IArs4c6QAAA+NJREFUeJzt3LFOU1Ecx/EfxIQJE3Bp6kC6kbD0BRhwMmwOfQYWn8FBjO/QxRdoiBuDC0NnTRcSEoeGgaaLIYGJhbpw4HK9LffWe87/wv/7WRQVvocezv1ftFYCAAAAAAAAAAAAAAAAAAAAAMTV2erOOlvdGX0AWN6q9QKAqpowAA+PNmW5Bs996/237gMvxVI3INYHkL7vvmQ3AEPzy4+f+vD5T/I1eO8HXm/AwtmzPn+wYb3/dfeX/hsQrxcA+nb97Be+xQDsbHVnh0ebWjsY66bf0fHFVao0fTVj/5twA3Z4tGl282k5AL33A6v9j9FfqfKHs8G1g7H2377W909vND4fVfo4y6Lvtx+G36/T3zq+uNJNv3M/CK0+f0m66Xfufz/2Ojz3rfe/Cf3s21bnPzwGkpK2vfet9z9Wv/Q7NuEA0vfdDz8Pw096PAClNEN4sNFS73IqSRpstNRqr2o6uVXvcko/Ut96/y37+bMXuqnOX9F3uikHIH37/Y/Vr3QDEn7u7QJA374f1hCG33Cnrd3Tyf0AlJRkCA532nN/n378vvX+W/SLvvsM8udPqvcMFg2f0E0xAL33wxqyb6fc/9j9yv8E4/ECQN++/9TwC2KvYfTxnSTp+uRM63vbuj45S9L23rfe/yb0w1nbPZ0Unr8Y/UXDRyoeQFJ9Q9B7P7sOi/2P3X9VZQHhAA7bdz/mDmSrvaqBWuqpO4t5AaDvrx+s721LKh6AqYX2dHL76BDSj8d6/y36+Zuf+3NYcENU9xkcn49WHg2f/sMaigaQdDeE6Nd2DbTc/9j90jcggccLAP3m9LPy332nGIJFn2/K4e+9n2Wx/5Z9y5uf0B5m1jKc8z51DkHv/Szra2+M/n+dmPwBTI2+r/50cqvrkzPTIWjxONN/aFvuv3U/q2gNKfdm3vBJtQb6zdv/ZfqV/gZkOrmV5jzwqS4A9P32Aa8Wnb0g1hks0465Bu/9smuIeQ2O1S/9HuPz0UrvcrrwLic8AWXv/X7t//5P33cf8KrM2QvqPoNV2vk11PUcDM/9qmuIcQ2O2a/8HJAQWeRb/+syH5Y+/bnG56OVnrqzgf590ld2XeGLf9wfJV1D7Lb3vvX+W/ezjTLqPIPZz72Muv8Xhvd+lsX+x+xXfpDCM4KLpHwhJPr++ovaqdcwbwCnevw99q33n365l96m/3L3v+7+UgudtxFWL0tL30/f8w0YffpPDcGUL02O9Kz3v+4+X6x4dppwA5YfQimGD/2HftGve+kDLwUHBlhCfgilHj7e+wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA4Bn6C2vHTX1Wd+nTAAAAAElFTkSuQmCC'); background-size: 408px 24px; animation: floatY 8s ease-in-out infinite -6s, applesSpin 1s steps(17) infinite;"></div>
+
+<!-- ============= 首页 (含文字稿输入) ============= -->
+<div id="screen-home" class="screen active">
+  <div class="home-container">
+    <div class="brand-row">
+      <div class="brand-mark"></div>
+      <div class="brand-text"><strong>◆</strong> DOUYIN HACKATHON · 2026</div>
+    </div>
+
+    <h1 class="home-title">
+      <span class="word" data-text="对手">对手</span><span class="word" data-text="来了">来了</span>
+    </h1>
+
+    <p class="home-pitch">
+      把你刷到的<strong>每一条干货</strong>,变成<span class="neo">真实的对手</span>。<br>
+      看过 ≠ 会用 —— AI 帮你把视频变成训练场,练到会用为止。
+    </p>
+
+    <div class="input-card">
+      <div class="input-label">
+        <div class="input-label-l">STEP 01 / 投喂内容</div>
+        <div class="input-label-r" id="char-count">0 字</div>
+      </div>
+      <textarea id="script-input" placeholder="把你刷到的方法论视频文字稿粘贴在这里...&#10;&#10;比如教你应对 PUA 老板的视频,&#10;或者一段相亲话术分析,&#10;或者数学题解题陷阱。&#10;&#10;AI 会从内容中自动生成对手 + 5 道闯关障碍 + 每关 4 个选项。"></textarea>
+    </div>
+
+    <div class="home-cta-row">
+      <span class="home-hint"><kbd>⌘</kbd> + <kbd>Enter</kbd> 召唤</span>
+      <button class="btn primary" onclick="goExtract()">▶ 召唤对手</button>
+    </div>
+
+    <div class="home-footer">
+      <span class="home-footer-line"></span>
+      <span>AI POWERED · PIXEL CRAFTED</span>
+      <span class="home-footer-line"></span>
+    </div>
+  </div>
+</div>
+
+<!-- ============= AI 解析中 ============= -->
+<div id="screen-extract" class="screen">
+  <div class="extract-box">
+    <div class="extract-frame">
+      <div class="extract-corner-tr"></div>
+      <div class="extract-corner-bl"></div>
+      <div class="extract-inner">
+        <div class="extract-matrix" id="extract-matrix"></div>
+        <div class="extract-scan-line"></div>
+      </div>
+    </div>
+    <div class="extract-status" id="extract-status">ANALYZING CONTENT</div>
+    <div class="extract-step" id="extract-step">读取视频文字稿...</div>
+  </div>
+</div>
+
+<!-- ============= 对手登场 ============= -->
+<div id="screen-reveal" class="screen">
+  <div class="reveal-wrap">
+    <div class="reveal-tag">◆ 对手已生成</div>
+    <div class="reveal-boss-wrap">
+      <div class="reveal-boss"></div>
+    </div>
+    <h2 class="reveal-name" id="reveal-name">对手姓名</h2>
+    <div class="reveal-title" id="reveal-title">对手身份</div>
+    <p class="reveal-desc" id="reveal-desc">对手特征描述会出现在这里</p>
+    <div class="reveal-walls-title">▼ 5 道闯关障碍 ▼</div>
+    <div class="reveal-walls">
+      <div class="wall-dot">1</div>
+      <div class="wall-dot">2</div>
+      <div class="wall-dot">3</div>
+      <div class="wall-dot">4</div>
+      <div class="wall-dot">5</div>
+    </div>
+    <button class="btn primary" onclick="startGame()">▶ 开始闯关</button>
+  </div>
+</div>
+
+<!-- ============= 闯关战斗 ============= -->
+<div id="screen-game" class="screen">
+  <div class="game-hud">
+    <div class="hud-left">
+      <div class="hud-stage" id="hud-stage">STAGE / <strong>对手</strong></div>
+      <div class="hud-progress" id="hud-progress"></div>
+    </div>
+    <div class="hud-center">
+      <div class="hp-label">HP</div>
+      <div class="hp-bar-track">
+        <div class="hp-bar-fill" id="hp-fill"></div>
+      </div>
+      <div class="hp-value" id="hp-value">100</div>
+    </div>
+    <div class="hud-round">
+      <button class="music-btn" id="music-btn" onclick="toggleMusic()" title="背景音乐开关">♫</button>
+      <span>ROUND<span class="num" id="round-num">1</span>/ 5</span>
+      <span class="hud-timer" id="answer-timer">10s</span>
+    </div>
+  </div>
+
+  <div class="game-stage" id="game-stage">
+    <div class="skyline"></div>
+    <div class="ground"></div>
+    <div class="boss-bubble" id="boss-bubble">...</div>
+    <div class="boss-area">
+      <div class="boss-nameplate" id="boss-nameplate">BOSS</div>
+      <div class="boss-sprite"></div>
+    </div>
+    <div class="player idle" id="player"></div>
+
+    <!-- 蓄力跳跃 UI (核心新增!) -->
+    <div class="jump-meter" id="jump-meter">
+      <div class="jump-meter-label">▼ AI 评分 = 跳跃力 ▼</div>
+      <div class="jump-meter-bar-track">
+        <div class="jump-meter-bar-fill" id="jump-meter-fill"></div>
+      </div>
+      <div class="jump-meter-power" id="jump-meter-power">--</div>
+    </div>
+    <div class="space-prompt" id="space-prompt">
+      按 <kbd>SPACE</kbd> 跳跃!
+    </div>
+
+    <div class="flash-overlay" id="flash"></div>
+    <div class="perfect-banner" id="perfect-banner">PERFECT!</div>
+  </div>
+
+  <div class="control-area">
+    <div class="control-status" id="control-status">回合开始 — 请选择你的回应</div>
+    <div class="options-grid" id="options-grid">
+      <!-- 4 个选项动态注入 -->
+    </div>
+    <div id="eval-result"></div>
+  </div>
+</div>
+
+<!-- ============= BOSS 战败 CG (通关展示) ============= -->
+<div id="screen-defeat" class="screen">
+  <div class="defeat-cg" id="defeat-cg">
+    <div class="defeat-head">
+      <div class="defeat-tag">▼ BOSS DEFEATED ▼</div>
+      <div class="defeat-title" id="defeat-title">战败</div>
+      <div class="defeat-sub" id="defeat-sub">你成功击破对手的话术</div>
+    </div>
+    <div class="defeat-body">
+      <div class="cg-boss-wrap">
+        <div class="boss-sprite cg-boss-sprite" aria-hidden="true"></div>
+      </div>
+      <div class="defeat-lines">
+        <div class="line" id="defeat-line-1">——</div>
+        <div class="line" id="defeat-line-2">——</div>
+        <div class="line" id="defeat-line-3">——</div>
+      </div>
+    </div>
+    <div class="defeat-actions">
+      <button class="btn primary" onclick="continueToResult()">继续</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============= 结算 ============= -->
+<div id="screen-result" class="screen">
+  <div class="result-wrap">
+    <div class="result-label">▼ FINAL JUDGEMENT ▼</div>
+    <div class="result-grade" id="result-grade">S</div>
+    <div class="result-verdict" id="result-verdict">完胜</div>
+    <p class="result-comment" id="result-comment">复盘点评</p>
+    <div class="result-rounds-label">▼ 5 关回顾 ▼</div>
+    <div class="result-rounds" id="result-rounds"></div>
+    <div class="result-actions">
+      <button class="btn ghost" onclick="resetAll()">再战</button>
+      <button class="btn" onclick="goHome()">返回首页</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =============================================================
+ * 「对手来了」闯关版 v0.3 (精美版)
+ * =============================================================
+ * 流程: 文字稿(首页) → AI 提取 → 对手登场 → 5 关闯关 → 结算
+ *
+ * USE_AI = false  使用预置数据,直接能演示
+ * USE_AI = true   调用真豆包 API
+ * ============================================================= */
+
+const USE_AI = true;  // 已启用真豆包 AI;调试时可改 false 用预置数据
+
+// ================================================
+// 🎮 关卡节奏参数 (可调)
+// ================================================
+const ANSWER_TIME_MS = 10000;  // 障碍物缓慢靠近 & 答题时间: 10 秒
+const TIMEOUT_DAMAGE = 50;     // 超时撞到角色扣 50 点血
+
+// ================================================
+// 🔑 在这里填入你的豆包 API 配置
+// ================================================
+const API_KEY = "ark-bc889d82-4b41-4bed-a0b6-9366fcbb0d0e-62faa";    // ← 你的 API Key (在「API Key 管理」页)
+const MODEL_ID = "ep-20260510111047-9v9mz";  // ← 你的 Endpoint ID (以 ep- 开头)
+const API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+// ================================================
+// 切 DeepSeek 备胎(如果豆包出问题):
+// const API_URL = "https://api.deepseek.com/v1/chat/completions";
+// const MODEL_ID = "deepseek-chat";
+
+/* ========== Prompt: 一次性生成对手 + 5 关 + 每关 4 选项 ========== */
+const EXTRACT_PROMPT = `
+你是"对手来了"游戏的关卡生成器。
+用户给你一段视频文字稿,你要从中提取出训练对手,并设计 5 道闯关 + 每关 4 个选择题选项。
+
+【输出 - 严格 JSON,无任何额外文字】
+{
+  "name": "对手姓名(2-4字,鲜活如'王经理'/'陈姐'/'张老师')",
+  "bossTag": "对手外号(2-8字,来自文字稿意象,如'加班吸血鬼'/'相亲审判官')",
+  "title": "对手身份(10字内)",
+  "description": "对手画像(60-100字,描述性格、动机、典型话术风格)",
+  "rounds": [
+    {
+      "wall": "对手第1关说的话(15-30字)",
+      "options": [
+        {"text":"选项A玩家可能的回复(20字内)", "score":95, "comment":"犀利点评(20字内)", "jumpHeight":"perfect"},
+        {"text":"选项B玩家可能的回复", "score":75, "comment":"点评", "jumpHeight":"mid"},
+        {"text":"选项C玩家可能的回复", "score":40, "comment":"点评", "jumpHeight":"low"},
+        {"text":"选项D玩家可能的回复", "score":15, "comment":"点评", "jumpHeight":"fail"}
+      ]
+    },
+    {"wall":"...", "options":[...]},
+    {"wall":"...", "options":[...]},
+    {"wall":"...", "options":[...]},
+    {"wall":"...", "options":[...]}
+  ]
+}
+
+【设计原则】
+1. 5 道墙难度递增: 1/2 试探,3 施压,4 威胁,5 综合大招
+2. 每关 4 个选项必须有明显分数梯度: 一个优解(85-100),一个良解(60-84),一个平解(35-59),一个烂解(0-34)
+3. 选项顺序要打乱(不能总是 A 优 D 烂),让玩家真的需要思考
+4. 优解: 用规则反击/把对方话还给对方/幽默不失锋芒
+5. 良解: 立场坚定但缺反将一军
+6. 平解: 用个人理由(我有事/我累)
+7. 烂解: 道德式回应或直接屈服
+8. 评语要够辣: 高分赞叹("绝!""教科书级!"),中分提醒("还能更狠"),低分嘲讽("这就缴械?")
+9. jumpHeight 映射: 95+"perfect" 80-94"high" 60-79"mid" 40-59"low" <40"fail"
+`.trim();
+
+/* ========== 演示数据 (USE_AI=false) - 新格式含 4 选项 ========== */
+const DEMO_OPPONENT = {
+  name: "王经理",
+  bossTag: "加班吸血鬼",
+  title: "35 岁直属上级",
+  description: "互联网公司中层管理者,擅长用'家文化'话术包装无偿加班需求。表面温和客气,实际把'画饼'当成 KPI。被反驳时切换'感情→前途→绩效'三段攻势,但从不撕破脸。",
+  rounds: [
+    {
+      wall: "小张啊,先别急着走,过来跟你商量个事...",
+      options: [
+        { text: "好的王哥,什么事您说", score: 35, comment: "这就乖乖留下了?", jumpHeight: "low" },
+        { text: "王哥,我已经下班了,有事明天说?", score: 92, comment: "把规则摆到台面,绝!", jumpHeight: "perfect" },
+        { text: "啊?现在啊...好吧", score: 18, comment: "缴械投降速度世界第一", jumpHeight: "fail" },
+        { text: "什么事?快点说我赶时间", score: 70, comment: "立场有了,但有点冲", jumpHeight: "mid" }
+      ]
+    },
+    {
+      wall: "周末有个项目你年轻多锻炼锻炼,咱们是一家人嘛",
+      options: [
+        { text: "一家人?那您加班费按家人价给?", score: 96, comment: "把家文化怼回去,神回复!", jumpHeight: "perfect" },
+        { text: "我周末已经有安排了,无法加班", score: 78, comment: "立场坚定,但还能更狠", jumpHeight: "mid" },
+        { text: "好吧那我尽量过来", score: 28, comment: "'尽量'是另一种'好的'", jumpHeight: "fail" },
+        { text: "为什么是我?让别人去", score: 45, comment: "推卸不如反击", jumpHeight: "low" }
+      ]
+    },
+    {
+      wall: "你看小李,主动周末加班从不抱怨,组里就指望肯拼的年轻人",
+      options: [
+        { text: "小李加班费给到位了吧?", score: 90, comment: "用钱戳破画饼,漂亮", jumpHeight: "high" },
+        { text: "我跟小李定位不一样", score: 62, comment: "回避了核心问题", jumpHeight: "mid" },
+        { text: "那我也学学小李吧", score: 12, comment: "你成了下一个被画饼的", jumpHeight: "fail" },
+        { text: "比较同事这事儿不专业吧", score: 86, comment: "把不当话术拉回正轨", jumpHeight: "high" }
+      ]
+    },
+    {
+      wall: "咱们绩效考核可不止看任务量,还有'团队配合度'这一项哦",
+      options: [
+        { text: "请把'团队配合度'的考核标准给我,我对照执行", score: 97, comment: "用流程反将一军,教科书!", jumpHeight: "perfect" },
+        { text: "那您把要求写成 OKR 我执行", score: 88, comment: "用规则约束承诺,稳!", jumpHeight: "high" },
+        { text: "您是在威胁我吗?", score: 38, comment: "撕破脸了,正中下怀", jumpHeight: "low" },
+        { text: "好吧,我尽力配合", score: 22, comment: "绩效在前你就软,这下绑定了", jumpHeight: "fail" }
+      ]
+    },
+    {
+      wall: "我当年比你拼多了,周末从不休息。这是难得的成长机会啊",
+      options: [
+        { text: "我的方式可能让我超过您的成长速度", score: 100, comment: "BOSS战收尾,封神!", jumpHeight: "perfect" },
+        { text: "成长应该是项目本身,不是加班这件事", score: 84, comment: "拆穿话术,有水平", jumpHeight: "high" },
+        { text: "时代不一样了,王经理", score: 58, comment: "对的但太空,没杀伤力", jumpHeight: "low" },
+        { text: "那我向您学习", score: 8, comment: "你刚把自己卖了", jumpHeight: "fail" }
+      ]
+    }
+  ]
+};
+
+/* ========== 全局状态 ========== */
+let state = {
+  script: '',
+  opponent: null,
+  currentRound: 0,
+  results: [],
+  isPlaying: false,
+  hp: 100,              // 玩家血量
+  pendingJump: null,
+  jumpTimeout: null,
+
+  // 答题阶段: 障碍物缓慢靠近
+  isAnswering: false,
+  answerRaf: null,
+  answerStartTs: 0,
+  wallStartX: 0,
+  wallHitX: 0,
+  roundLocked: false
+};
+
+/* ========== 音频: 背景音乐 + 音效(纯 WebAudio,无需外部资源) ========== */
+const audio = {
+  ctx: null,
+  master: null,
+  bgGain: null,
+  sfxGain: null,
+  bgTimer: null,
+  enabled: true,
+  started: false
+};
+
+function ensureAudio() {
+  if (audio.started) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  audio.ctx = new Ctx();
+  audio.master = audio.ctx.createGain();
+  audio.bgGain = audio.ctx.createGain();
+  audio.sfxGain = audio.ctx.createGain();
+  audio.master.gain.value = 0.6;
+  audio.bgGain.gain.value = 0.12;
+  audio.sfxGain.gain.value = 0.8;
+  audio.bgGain.connect(audio.master);
+  audio.sfxGain.connect(audio.master);
+  audio.master.connect(audio.ctx.destination);
+  audio.started = true;
+  startBackgroundMusic();
+}
+
+function startBackgroundMusic() {
+  if (!audio.started || audio.bgTimer) return;
+  // 8-bit 风格轻 BGM (简单分解和弦循环)
+  const scheduleBar = (t0) => {
+    const ctx = audio.ctx;
+    const notes = [220, 277.18, 329.63, 392, 440, 392, 329.63, 277.18];
+    const step = 0.22;
+    for (let i = 0; i < notes.length; i++) {
+      const t = t0 + i * step;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(notes[i], t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + step * 0.95);
+      o.connect(g).connect(audio.bgGain);
+      o.start(t);
+      o.stop(t + step);
+    }
+  };
+  scheduleBar(audio.ctx.currentTime + 0.05);
+  audio.bgTimer = setInterval(() => scheduleBar(audio.ctx.currentTime + 0.05), 1800);
+  // 立刻同步开关状态
+  audio.bgGain.gain.setValueAtTime(audio.enabled ? 0.12 : 0.0001, audio.ctx.currentTime);
+}
+
+function toggleMusic() {
+  audio.enabled = !audio.enabled;
+  ensureAudio();
+  if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+  if (audio.bgGain) audio.bgGain.gain.setTargetAtTime(audio.enabled ? 0.12 : 0.0001, audio.ctx.currentTime, 0.02);
+  const btn = document.getElementById('music-btn');
+  if (btn) btn.style.opacity = audio.enabled ? '1' : '0.55';
+}
+
+function playSfx(type) {
+  ensureAudio();
+  if (!audio.ctx) return;
+  const ctx = audio.ctx;
+  if (ctx.state === 'suspended') ctx.resume();
+  const t = ctx.currentTime + 0.005;
+
+  if (type === 'firework') {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(920, t);
+    o.frequency.exponentialRampToValueAtTime(120, t + 0.22);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g).connect(audio.sfxGain);
+    o.start(t);
+    o.stop(t + 0.24);
+    return;
+  }
+
+  if (type === 'hit') {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(50, t + 0.18);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.45, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    o.connect(g).connect(audio.sfxGain);
+    o.start(t);
+    o.stop(t + 0.2);
+    return;
+  }
+
+  if (type === 'jump') {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(320, t);
+    o.frequency.exponentialRampToValueAtTime(620, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.28, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.connect(g).connect(audio.sfxGain);
+    o.start(t);
+    o.stop(t + 0.14);
+  }
+}
+
+/* ========== 屏幕切换 ========== */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function goHome() {
+  document.getElementById('script-input').value = '';
+  updateCharCount();
+  showScreen('screen-home');
+}
+
+function updateCharCount() {
+  const len = document.getElementById('script-input').value.length;
+  document.getElementById('char-count').textContent = len + ' 字';
+}
+
+document.getElementById('script-input').addEventListener('input', updateCharCount);
+
+/* ========== AI 调用 ========== */
+async function callAI(systemPrompt, userMessage) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + API_KEY
+    },
+    body: JSON.stringify({
+      model: MODEL_ID,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.85
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'AI 调用失败 ' + res.status);
+  return JSON.parse(data.choices[0].message.content);
+}
+
+/* ========== 步骤 1: 提取对手 ========== */
+async function goExtract() {
+  const script = document.getElementById('script-input').value.trim();
+  if (!script || script.length < 30) {
+    alert('请先粘贴或选择一段视频文字稿(至少 30 字)');
+    return;
+  }
+  state.script = script;
+  showScreen('screen-extract');
+  startMatrixEffect();
+
+  const steps = [
+    '读取视频文字稿...',
+    '分析关键话术模式...',
+    '构建对手人格画像...',
+    '生成 5 道闯关障碍...',
+    '召唤对手中...'
+  ];
+  let stepIdx = 0;
+  const stepTimer = setInterval(() => {
+    if (stepIdx < steps.length) {
+      document.getElementById('extract-step').textContent = steps[stepIdx++];
+    }
+  }, 700);
+
+  try {
+    let opponent;
+    if (USE_AI) {
+      opponent = await callAI(EXTRACT_PROMPT, '视频文字稿如下:\n\n' + script);
+    } else {
+      await new Promise(r => setTimeout(r, 3500));
+      opponent = DEMO_OPPONENT;
+    }
+    clearInterval(stepTimer);
+    state.opponent = opponent;
+    setTimeout(() => showOpponentReveal(opponent), 400);
+  } catch (e) {
+    clearInterval(stepTimer);
+    document.getElementById('extract-step').textContent = '出错了: ' + e.message;
+    document.getElementById('extract-step').style.color = 'var(--enemy)';
+    setTimeout(() => goHome(), 2500);
+  }
+}
+
+function startMatrixEffect() {
+  const matrix = document.getElementById('extract-matrix');
+  matrix.innerHTML = '';
+  const chars = '01对手来了PUA加班绩效家文化反击规则';
+  for (let i = 0; i < 12; i++) {
+    const col = document.createElement('div');
+    col.className = 'matrix-col';
+    col.style.left = (i * 16) + 'px';
+    col.style.animationDelay = (-Math.random() * 4) + 's';
+    col.style.animationDuration = (3 + Math.random() * 2) + 's';
+    let text = '';
+    for (let j = 0; j < 16; j++) {
+      text += chars[Math.floor(Math.random() * chars.length)] + '\n';
+    }
+    col.textContent = text;
+    matrix.appendChild(col);
+  }
+}
+
+/* ========== 步骤 2: 对手登场 ========== */
+function showOpponentReveal(opponent) {
+  document.getElementById('reveal-name').textContent = opponent.name;
+  document.getElementById('reveal-title').textContent = opponent.title;
+  document.getElementById('reveal-desc').textContent = opponent.description;
+  showScreen('screen-reveal');
+}
+
+function updateBossNameplate() {
+  const el = document.getElementById('boss-nameplate');
+  if (!el || !state.opponent) return;
+  el.textContent = (state.opponent.bossTag || state.opponent.title || state.opponent.name || 'BOSS').trim();
+}
+
+/* ========== 步骤 3: 开始闯关 ========== */
+function startGame() {
+  // 用户手势触发,可安全开启背景音乐/音效
+  ensureAudio();
+  if (audio.ctx && audio.ctx.state === 'suspended') audio.ctx.resume();
+  const btn = document.getElementById('music-btn');
+  if (btn) btn.style.opacity = audio.enabled ? '1' : '0.55';
+
+  state.currentRound = 0;
+  state.results = [];
+  state.isPlaying = true;
+  state.hp = 100;
+  // 进度点初始化
+  const progress = document.getElementById('hud-progress');
+  progress.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'progress-dot';
+    progress.appendChild(dot);
+  }
+  document.getElementById('hud-stage').innerHTML = `STAGE / <strong>${state.opponent.name}</strong>`;
+  updateBossNameplate();
+  updateHpDisplay();
+  showScreen('screen-game');
+  setTimeout(() => nextRound(), 600);
+}
+
+function stopAnswerPhase() {
+  state.isAnswering = false;
+  if (state.answerRaf) {
+    cancelAnimationFrame(state.answerRaf);
+    state.answerRaf = null;
+  }
+}
+
+function applyWallSkin(wall, roundIndex) {
+  const types = ['rock', 'fireball', 'spikes', 'laser', 'rock'];
+  const type = types[roundIndex % types.length];
+
+  wall.classList.remove('rock', 'fireball', 'spikes', 'laser');
+  wall.classList.add(type);
+
+  // 尺寸/形状差异 (更“新奇”)
+  wall.style.width = '64px';
+  if (type === 'fireball') {
+    wall.style.width = '92px';
+    wall.style.height = '92px';
+  } else if (type === 'laser') {
+    wall.style.width = '28px';
+    wall.style.height = (210 + roundIndex * 8) + 'px';
+  } else {
+    wall.style.height = (168 + roundIndex * 12) + 'px';
+  }
+}
+
+function startAnswerPhase() {
+  stopAnswerPhase();
+  const wall = document.getElementById('current-wall');
+  const stage = document.getElementById('game-stage');
+  const player = document.getElementById('player');
+  if (!wall || !stage || !player) return;
+
+  // 位置计算 (用 left 像素控制,跨屏幕稳定)
+  const boss = stage.querySelector('.boss-area');
+  const bossLeft = boss ? boss.offsetLeft : stage.clientWidth;
+  // 障碍物从 boss 的左边生成
+  const hitX = player.offsetLeft + Math.round(player.offsetWidth * 0.55);
+  const minStartX = hitX + 160; // 避免障碍物生成在玩家脸上
+  const startX = Math.max(minStartX, bossLeft - wall.offsetWidth - 22);
+  state.wallStartX = startX;
+  state.wallHitX = hitX;
+
+  wall.style.transition = 'none';
+  wall.style.left = startX + 'px';
+  void wall.offsetWidth; // reflow
+
+  state.isAnswering = true;
+  state.answerStartTs = performance.now();
+  const deadline = state.answerStartTs + ANSWER_TIME_MS;
+
+  const tick = (now) => {
+    if (!state.isPlaying || !state.isAnswering) return;
+    const remain = Math.max(0, deadline - now);
+    const p = 1 - remain / ANSWER_TIME_MS;
+    const x = startX + (hitX - startX) * p;
+    wall.style.left = x + 'px';
+
+    const sec = Math.ceil(remain / 1000);
+    const timerEl = document.getElementById('answer-timer');
+    if (timerEl) timerEl.textContent = sec + 's';
+
+    const status = document.getElementById('control-status');
+    if (status && !state.roundLocked) {
+      status.className = 'control-status';
+      status.textContent = `第 ${state.currentRound + 1} 回合 — 请选择你的回应（剩余 ${sec}s）`;
+    }
+
+    if (remain <= 0) {
+      stopAnswerPhase();
+      handleAnswerTimeout();
+      return;
+    }
+    state.answerRaf = requestAnimationFrame(tick);
+  };
+  state.answerRaf = requestAnimationFrame(tick);
+}
+
+function handleAnswerTimeout() {
+  if (!state.isPlaying) return;
+  if (state.roundLocked) return;
+  state.roundLocked = true;
+
+  applyDamage(TIMEOUT_DAMAGE);
+  playSfx('hit');
+
+  document.querySelectorAll('.option-card').forEach((c) => (c.disabled = true));
+  const stage = document.getElementById('game-stage');
+  stage.classList.add('shake');
+  setTimeout(() => stage.classList.remove('shake'), 400);
+
+  const player = document.getElementById('player');
+  player.className = 'player hit';
+
+  const status = document.getElementById('control-status');
+  status.className = 'control-status thinking';
+  status.textContent = `⏰ 超时！障碍物撞到你 -${TIMEOUT_DAMAGE}HP，准备再来…`;
+
+  const dot = document.querySelectorAll('.progress-dot')[state.currentRound];
+  if (dot) {
+    dot.classList.add('fail');
+    setTimeout(() => dot.classList.remove('fail'), 900);
+  }
+
+  setTimeout(() => {
+    if (state.hp <= 0) return endGame(true);
+    retryCurrentRound();
+  }, 1200);
+}
+
+function retryCurrentRound() {
+  if (!state.isPlaying) return;
+  state.roundLocked = false;
+
+  const wall = document.getElementById('current-wall');
+  if (wall) {
+    wall.style.transition = 'none';
+    wall.style.left = state.wallStartX + 'px';
+    void wall.offsetWidth;
+  }
+
+  const player = document.getElementById('player');
+  if (player) {
+    player.className = 'player idle';
+    player.style.transform = '';
+  }
+
+  document.querySelectorAll('.option-card').forEach((c) => {
+    c.disabled = false;
+    c.classList.remove('chosen');
+  });
+  document.getElementById('eval-result').innerHTML = '';
+  document.getElementById('game-stage').classList.remove('paused');
+  startAnswerPhase();
+}
+
+/* ========== 下一回合 ========== */
+function nextRound() {
+  if (state.currentRound >= 5) {
+    return endGame();
+  }
+  // 清除可能残留的状态
+  state.pendingJump = null;
+  if (state.jumpTimeout) { clearTimeout(state.jumpTimeout); state.jumpTimeout = null; }
+  stopAnswerPhase();
+  state.roundLocked = false;
+  document.getElementById('jump-meter').classList.remove('active');
+  document.getElementById('space-prompt').classList.remove('active');
+  document.getElementById('space-prompt').classList.remove('pressed');
+
+  const player = document.getElementById('player');
+  player.className = 'player';
+  player.style.transform = '';
+  setTimeout(() => player.classList.add('idle'), 50);
+
+  const stage = document.getElementById('game-stage');
+  stage.classList.remove('paused');
+
+  const dots = document.querySelectorAll('.progress-dot');
+  dots.forEach((d, i) => {
+    d.classList.remove('current');
+    if (i === state.currentRound) d.classList.add('current');
+  });
+  document.getElementById('round-num').textContent = state.currentRound + 1;
+
+  const round = state.opponent.rounds[state.currentRound];
+  const wallText = round.wall;
+  const bubble = document.getElementById('boss-bubble');
+  bubble.textContent = wallText;
+  bubble.setAttribute('data-boss-name', state.opponent.name);
+  updateBossNameplate();
+  bubble.style.animation = 'none';
+  void bubble.offsetWidth;
+  bubble.style.animation = 'bubblePop 0.5s ease-out';
+
+  removeOldWall();
+  const wall = document.createElement('div');
+  wall.className = 'wall incoming';
+  wall.id = 'current-wall';
+  // 障碍物更高 + 每关略变高;外观也每关不同
+  wall.style.height = (168 + state.currentRound * 10) + 'px';
+  applyWallSkin(wall, state.currentRound);
+  document.getElementById('game-stage').appendChild(wall);
+
+  // 渲染 4 个选项
+  const grid = document.getElementById('options-grid');
+  grid.innerHTML = '';
+  const letters = ['A', 'B', 'C', 'D'];
+  round.options.forEach((opt, i) => {
+    const card = document.createElement('button');
+    card.className = 'option-card';
+    card.innerHTML = `<span class="option-letter">${letters[i]}</span><span class="option-text">${opt.text}</span>`;
+    card.onclick = () => chooseOption(i);
+    grid.appendChild(card);
+  });
+  document.getElementById('control-status').className = 'control-status';
+  document.getElementById('control-status').textContent = `第 ${state.currentRound + 1} 回合 — 请选择你的回应（剩余 10s）`;
+  document.getElementById('eval-result').innerHTML = '';
+
+  const timerEl = document.getElementById('answer-timer');
+  if (timerEl) timerEl.textContent = '10s';
+  startAnswerPhase();
+}
+
+function removeOldWall() {
+  const old = document.getElementById('current-wall');
+  if (old) old.remove();
+}
+
+/* ========== 玩家选择选项 ========== */
+function chooseOption(index) {
+  if (!state.isPlaying) return;
+  if (state.roundLocked) return;
+  const round = state.opponent.rounds[state.currentRound];
+  const opt = round.options[index];
+  if (!opt) return;
+
+  state.roundLocked = true;
+  stopAnswerPhase(); // 回答锁定,墙暂停在当前位置
+
+  // 锁住所有选项
+  document.querySelectorAll('.option-card').forEach((c, i) => {
+    c.disabled = true;
+    if (i === index) c.classList.add('chosen');
+  });
+  document.getElementById('control-status').className = 'control-status thinking';
+  document.getElementById('control-status').textContent = 'AI 正在审视你的选择';
+  document.getElementById('game-stage').classList.add('paused');
+
+  // 假装思考一下,然后处理结果
+  setTimeout(() => {
+    const maxScore = Math.max(...round.options.map(o => o.score));
+    const isCorrect = opt.score === maxScore;
+    handleEvalResult({
+      score: opt.score,
+      comment: opt.comment,
+      jumpHeight: opt.jumpHeight,
+      isCorrect
+    }, opt.text);
+  }, 900);
+}
+
+/* ========== 处理评估结果 (蓄力跳 + 血量) ========== */
+function handleEvalResult(result, userReply) {
+  const round = state.opponent.rounds[state.currentRound];
+
+  // 计算扣血: 分数越低扣越多
+  let dmg = 0;
+  if (result.score >= 90) dmg = 0;
+  else if (result.score >= 70) dmg = 10;
+  else if (result.score >= 50) dmg = 25;
+  else if (result.score >= 30) dmg = 50;
+  else dmg = 80;
+
+  applyDamage(dmg);
+
+  popScore(result.score, result.jumpHeight);
+  showEvalResult(result);
+
+  const stage = document.getElementById('game-stage');
+  stage.classList.remove('paused');
+
+  // 错误(未选到最高分) → 撞到并重来(同一关直到血扣完)
+  if (!result.isCorrect) {
+    playSfx('hit');
+    const player = document.getElementById('player');
+    player.className = 'player hit';
+    stage.classList.add('shake');
+    setTimeout(() => stage.classList.remove('shake'), 400);
+
+    const status = document.getElementById('control-status');
+    status.className = 'control-status thinking';
+    status.textContent = `没选到最佳回应 — 撞到了!扣血 ${dmg}，准备再来…`;
+
+    const dot = document.querySelectorAll('.progress-dot')[state.currentRound];
+    if (dot) {
+      dot.classList.add('fail');
+      setTimeout(() => dot.classList.remove('fail'), 900);
+    }
+
+    setTimeout(() => {
+      if (state.hp <= 0) return endGame(true);
+      retryCurrentRound();
+    }, 1400);
+    return;
+  }
+
+  // 正确: 记录本关通过(只记录最终通过结果)
+  state.results.push({ ...result, reply: userReply, wall: round.wall });
+
+  // 显示跳跃力仪表(快速展示后自动起跳)
+  const meter = document.getElementById('jump-meter');
+  const meterFill = document.getElementById('jump-meter-fill');
+  const meterPower = document.getElementById('jump-meter-power');
+  const colors = { perfect: 'var(--warning)', high: 'var(--player)', mid: '#80f2ff', low: 'var(--ink)', fail: 'var(--enemy)' };
+  meterFill.style.width = '0%';
+  meterPower.textContent = '--';
+  meter.classList.add('active');
+  setTimeout(() => {
+    meterFill.style.width = result.score + '%';
+    meterPower.textContent = result.score;
+    meterPower.style.color = colors[result.jumpHeight] || 'var(--ink)';
+  }, 80);
+
+  const status = document.getElementById('control-status');
+  status.className = 'control-status';
+  status.textContent = '✅ 回答正确 — 起跳!';
+
+  setTimeout(() => {
+    meter.classList.remove('active');
+    performJumpOverWall(result);
+  }, 420);
+}
+
+/* ========== 应用血量变化 ========== */
+function applyDamage(dmg) {
+  if (dmg === 0) {
+    // 没扣血,显示"无伤"
+    popHp('SAFE', 'safe');
+    return;
+  }
+  state.hp = Math.max(0, state.hp - dmg);
+  popHp('-' + dmg, 'normal');
+  updateHpDisplay();
+}
+
+function updateHpDisplay() {
+  const fill = document.getElementById('hp-fill');
+  const val = document.getElementById('hp-value');
+  fill.style.width = state.hp + '%';
+  val.textContent = state.hp;
+  val.classList.remove('dmg-flash');
+  void val.offsetWidth;
+  val.classList.add('dmg-flash');
+  if (state.hp <= 30) fill.classList.add('low');
+  else fill.classList.remove('low');
+}
+
+function popHp(text, type) {
+  const el = document.createElement('div');
+  el.className = 'hp-pop ' + (type === 'safe' ? 'safe' : type === 'heal' ? 'heal' : '');
+  el.textContent = text;
+  el.style.left = '50%';
+  el.style.top = '60px';
+  document.getElementById('game-stage').appendChild(el);
+  setTimeout(() => el.remove(), 1400);
+}
+
+/* 回答正确后: 角色跳过障碍物(障碍物不消失,而是从角色身后通过) */
+function performJumpOverWall(result) {
+  if (!state.isPlaying) return;
+  playSfx('jump');
+
+  // v0.6: 跳更高一些(兼容更高/更奇特障碍物),并做上限保护
+  const stage = document.getElementById('game-stage');
+  const maxJump = stage ? Math.max(240, stage.clientHeight - 120) : 320;
+  const jumpHeight = Math.min(maxJump, Math.round(140 + result.score * 2.4));
+  const player = document.getElementById('player');
+  player.className = 'player jump';
+  player.style.transform = `translateY(-${jumpHeight}px)`;
+
+  // 高分 → 苹果飞起 + 烟花!
+  if (result.jumpHeight === 'high' || result.jumpHeight === 'perfect') {
+    spawnApple();
+    spawnFireworks(result.jumpHeight === 'perfect' ? 10 : 6);
+  } else if (result.jumpHeight === 'mid') {
+    spawnFireworks(3);
+  }
+
+  if (result.jumpHeight === 'perfect') {
+    document.getElementById('flash').classList.add('active');
+    const banner = document.getElementById('perfect-banner');
+    banner.classList.remove('active');
+    void banner.offsetWidth;
+    banner.classList.add('active');
+    setTimeout(() => document.getElementById('flash').classList.remove('active'), 900);
+  }
+
+  setTimeout(() => {
+    player.classList.add('fall');
+    player.classList.remove('jump');
+  }, 380);
+
+  setTimeout(() => {
+    player.style.transform = 'translateY(0)';
+  }, 420);
+
+  setTimeout(() => {
+    player.className = 'player idle';
+    player.style.transform = '';
+  }, 800);
+
+  // 障碍物继续移动,让玩家"跳过"它(而不是瞬间消失)
+  const wall = document.getElementById('current-wall');
+  if (wall) {
+    wall.classList.remove('incoming');
+    wall.style.transition = 'left 900ms linear';
+    wall.style.left = (-wall.offsetWidth - 160) + 'px';
+    setTimeout(() => wall.remove(), 980);
+  }
+
+  document.querySelectorAll('.progress-dot')[state.currentRound].classList.add('done');
+  document.querySelectorAll('.progress-dot')[state.currentRound].classList.remove('current');
+
+  state.currentRound++;
+  setTimeout(() => {
+    if (state.hp <= 0) endGame(true);
+    else if (state.currentRound >= 5) endGame();
+    else nextRound();
+  }, 2200);
+}
+
+/* 保留空格: 兼容旧逻辑(当前版本不强制使用) */
+function triggerJump() {
+  if (!state.pendingJump || !state.isPlaying) return;
+  const { result } = state.pendingJump;
+  state.pendingJump = null;
+  if (state.jumpTimeout) { clearTimeout(state.jumpTimeout); state.jumpTimeout = null; }
+  performJumpOverWall(result);
+}
+
+/* ========== 烟花特效 ========== */
+function spawnFireworks(count, container = 'game-stage') {
+  const colors = ['#ff2e3f', '#00e5ff', '#ffd60a', '#ff8a3a', '#a78bfa', '#34d399'];
+  const stage = typeof container === 'string' ? document.getElementById(container) : container;
+  if (!stage) return;
+  // 音效(更克制: 每轮烟花只响 1 次)
+  playSfx('firework');
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const x = 30 + Math.random() * 60; // 30%-90% 宽度
+      const startY = 90; // 从画面底部
+      const burstY = 30 + Math.random() * 30; // 在 30%-60% 高度爆炸
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      // 上升轨迹
+      const trail = document.createElement('div');
+      trail.className = 'firework trail';
+      trail.style.left = x + '%';
+      trail.style.bottom = startY + 'px';
+      trail.style.color = color;
+      trail.style.background = color;
+      stage.appendChild(trail);
+      setTimeout(() => trail.remove(), 600);
+      // 爆炸
+      setTimeout(() => {
+        const cx = x;
+        for (let j = 0; j < 14; j++) {
+          const p = document.createElement('div');
+          p.className = 'firework-burst';
+          p.style.left = cx + '%';
+          p.style.top = burstY + '%';
+          p.style.color = color;
+          p.style.background = color;
+          const angle = (j / 14) * Math.PI * 2;
+          const dist = 90 + Math.random() * 60; // 更大更炸
+          p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+          p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+          stage.appendChild(p);
+          setTimeout(() => p.remove(), 1200);
+        }
+      }, 500);
+    }, i * 200);
+  }
+}
+
+/* 超时未按空格 = 撞墙 */
+function forceTimeoutMiss() {
+  if (!state.pendingJump) return;
+  state.pendingJump = null;
+
+  document.getElementById('jump-meter').classList.remove('active');
+  document.getElementById('space-prompt').classList.remove('active');
+
+  const player = document.getElementById('player');
+  player.className = 'player hit';
+  document.querySelectorAll('.progress-dot')[state.currentRound].classList.add('fail');
+  document.getElementById('control-status').textContent = '没按空格 — 撞墙了!';
+
+  setTimeout(() => endGame(true), 2200);
+}
+
+function showEvalResult(result) {
+  const colors = { perfect: 'var(--warning)', high: 'var(--player)', mid: '#80f2ff', low: 'var(--ink)', fail: 'var(--enemy)' };
+  document.getElementById('eval-result').innerHTML = `
+    <div class="eval-result" style="border-left-color: ${colors[result.jumpHeight]}">
+      <div class="eval-row">
+        <div class="eval-comment">${result.comment}</div>
+        <div class="eval-score" style="color: ${colors[result.jumpHeight]}">${result.score}</div>
+      </div>
+    </div>`;
+}
+
+function popScore(score, height) {
+  const el = document.createElement('div');
+  el.className = 'score-pop ' + height;
+  el.textContent = (height === 'fail' ? '✗ ' : '+') + score;
+  el.style.left = '50%';
+  el.style.top = '38%';
+  document.getElementById('game-stage').appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+}
+
+function spawnApple() {
+  const apple = document.createElement('div');
+  apple.className = 'reward-apple';
+  apple.style.right = '32%';
+  apple.style.bottom = '180px';
+  document.getElementById('game-stage').appendChild(apple);
+  setTimeout(() => apple.remove(), 1700);
+}
+
+/* ========== 通关 CG ========== */
+let defeatNext = null;
+let defeatTimer = null;
+
+function showBossDefeatCG() {
+  const bossName = (state.opponent?.bossTag || state.opponent?.title || state.opponent?.name || 'BOSS').trim();
+  const oppName = (state.opponent?.name || '对手').trim();
+
+  const titleEl = document.getElementById('defeat-title');
+  const subEl = document.getElementById('defeat-sub');
+  const l1 = document.getElementById('defeat-line-1');
+  const l2 = document.getElementById('defeat-line-2');
+  const l3 = document.getElementById('defeat-line-3');
+
+  if (titleEl) titleEl.textContent = `${bossName} · 战败`;
+  if (subEl) subEl.textContent = `你打穿了 ${oppName} 的话术防线`;
+  if (l1) l1.textContent = `【${bossName}】：“……行，按规则来。”`;
+  if (l2) l2.textContent = `系统：对手破防，气势 -999`;
+  if (l3) l3.textContent = `你：下一关？不，直接结算。`;
+
+  showScreen('screen-defeat');
+  updateBossNameplate();
+
+  // CG 烟花+音效
+  spawnFireworks(14, 'defeat-cg');
+  spawnFireworks(10, 'defeat-cg');
+
+  if (defeatTimer) clearTimeout(defeatTimer);
+  defeatTimer = setTimeout(() => continueToResult(), 2600);
+}
+
+function continueToResult() {
+  if (defeatTimer) { clearTimeout(defeatTimer); defeatTimer = null; }
+  const next = defeatNext;
+  defeatNext = null;
+  if (typeof next === 'function') next();
+}
+
+/* ========== 结算 ========== */
+function endGame(failed = false) {
+  stopAnswerPhase();
+  state.isPlaying = false;
+  state.roundLocked = true;
+  const stage = document.getElementById('game-stage');
+  if (stage) stage.classList.remove('paused');
+  const scores = state.results.map(r => r.score);
+  const avg = scores.length ? scores.reduce((a,b)=>a+b,0) / scores.length : 0;
+  const hasPerfect = state.results.some(r => r.jumpHeight === 'perfect');
+  const hpDead = state.hp <= 0;
+
+  let grade, verdict, comment;
+  if (failed || hpDead) {
+    if (state.results.length <= 1) {
+      grade = 'D'; verdict = '全军覆没';
+      comment = `第一关就缴械了。这就是为什么"对手来了"存在 —— 不练,你永远不会。`;
+    } else {
+      grade = 'C'; verdict = `血量耗尽`;
+      comment = `${state.opponent.name}的话术让你失血过多。复盘看看哪几关掉了血,下次注意。`;
+    }
+  } else if (hasPerfect && avg >= 85 && state.hp >= 80) {
+    grade = 'S+'; verdict = '满血通关';
+    comment = `你不是在拒绝,你是在重新定义规则。${state.opponent.name}今晚会失眠思考人生。`;
+  } else if (avg >= 80 && state.hp >= 60) {
+    grade = 'S'; verdict = '完胜';
+    comment = `你保住了底线,也保住了大半血量。${state.opponent.name}见到你会下意识让路。`;
+  } else if (avg >= 65) {
+    grade = 'A'; verdict = '险胜';
+    comment = `险象环生但全身而退。剩 ${state.hp} 血,记住那几次差点被说动的瞬间。`;
+  } else {
+    grade = 'B'; verdict = '勉强通关';
+    comment = `过关了,但对手并没有真的服气。继续训练,下次拿 S。`;
+  }
+
+  document.getElementById('result-grade').textContent = grade;
+  document.getElementById('result-verdict').textContent = verdict;
+  document.getElementById('result-comment').textContent = comment;
+
+  const rounds = document.getElementById('result-rounds');
+  rounds.innerHTML = '';
+  for (let i = 0; i < 5; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'result-round-dot';
+    if (state.results[i]) {
+      dot.textContent = state.results[i].score;
+      const colors = { perfect: 'var(--warning)', high: 'var(--player)', mid: '#80f2ff', low: 'var(--ink-dim)', fail: 'var(--enemy)' };
+      dot.style.color = colors[state.results[i].jumpHeight];
+      dot.style.borderLeftColor = colors[state.results[i].jumpHeight];
+    } else {
+      dot.textContent = '—';
+      dot.style.color = 'var(--ink-faint)';
+    }
+    rounds.appendChild(dot);
+  }
+
+  const isWin = !(failed || hpDead);
+  if (isWin) {
+    defeatNext = () => showScreen('screen-result');
+    showBossDefeatCG();
+  } else {
+    showScreen('screen-result');
+  }
+}
+
+function resetAll() {
+  stopAnswerPhase();
+  state = {
+    script: '',
+    opponent: null,
+    currentRound: 0,
+    results: [],
+    isPlaying: false,
+    hp: 100,
+    pendingJump: null,
+    jumpTimeout: null,
+    isAnswering: false,
+    answerRaf: null,
+    answerStartTs: 0,
+    wallStartX: 0,
+    wallHitX: 0,
+    roundLocked: false
+  };
+  goHome();
+}
+
+/* ========== 快捷键 ========== */
+document.getElementById('script-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); goExtract(); }
+});
+
+/* 关键! 空格触发跳跃 */
+document.addEventListener('keydown', (e) => {
+  // 只在游戏页且有 pending 跳跃时响应
+  if (e.code !== 'Space') return;
+  // 输入框获得焦点时不抢空格
+  const tag = (document.activeElement || {}).tagName;
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  if (state.pendingJump) {
+    e.preventDefault();
+    triggerJump();
+  }
+});
+
+/* ========== 苹果飘动动画 (修复名字冲突) ========== */
+const styleFix = document.createElement('style');
+styleFix.textContent = `
+  @keyframes applesSpin {
+    from { background-position: 0 0; }
+    to { background-position: -408px 0; }
+  }
+`;
+document.head.appendChild(styleFix);
+</script>
+
+</body>
+</html>
